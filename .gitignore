@@ -1,0 +1,40 @@
+## Visual Studio files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.opensdf
+*.sdf
+*.vcxproj.user
+*.VC.db
+*.VC.VC.opendb
+*.ipch
+
+## Build folders
+[Bb]in/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+
+## Intermediate build files
+*.obj
+*.pch
+*.pdb
+*.idb
+*.tlog
+*.log
+*.ilk
+*.tmp
+*.cache
+*.lastbuildstate
+
+## Other
+*.aps
+*.ncb
+*.opendb
+*.db
+*.log
+*.vs/

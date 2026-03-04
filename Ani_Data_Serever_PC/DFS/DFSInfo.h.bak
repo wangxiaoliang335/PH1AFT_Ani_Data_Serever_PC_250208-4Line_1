@@ -1,0 +1,391 @@
+#pragma once
+///////////////////////////////////////////////////////////////////////////////
+// FILE : CDFSInfo.h
+// Header file for CSOT DFS class
+//		Version		Updated		 Author		 Note
+//      -------     -------      ------      ----
+//		   1.0      2018/09/12   Hacy		Create	: CSOT 수정
+///////////////////////////////////////////////////////////////////////////////
+#include <vector>
+#include <map>
+#include "Ani_Data_Serever_PC.h"
+
+using namespace std;
+
+
+struct SDFSHeaderInfo{
+	CString strFile_Ver;
+	CString strFile_CreateTime;
+	CString strEQP_Type;
+	CString strEQP_ID;
+	CString strContent;
+};
+
+struct SDFAPanel_Data_Begin{
+	CString strPanel_ID;
+	CString strOwner_CODE;
+	CString strOwner_Type;
+	CString strProduct_ID;
+	CString strProcess_ID;
+	CString strProduct_Group;
+	CString strLOT_ID;
+	CString strCST_ID;
+	CString strGroup_ID;
+	CString strArray_Lot_ID;
+	CString strArray_Glass_ID;
+#if _SYSTEM_AMTAFT_
+	CString strPre_Panel_Info;
+	CString strPre_Panel_Array_Repair;
+#endif
+};
+
+enum
+{
+	PanelData_Panel_iD,
+	PanelData_Owner_Code,
+	PanelData_Owner_Type,
+	PanelData_Product_ID,
+	PanelData_Process_ID,
+	PanelData_Product_Group,
+	PanelData_LOT_ID,
+	PanelData_CST_ID,
+	PanelData_Group_ID,
+	PanelData_Array_Lot_ID,
+	PanelData_Array_Glass_ID,
+#if _SYSTEM_AMTAFT_
+	PanelData_Pre_Panel_Info,
+	PanelData_Pre_Panel_Array_Repair,
+#endif
+	MaxSDFSPanelDataBeginCount
+};
+
+#if _SYSTEM_AMTAFT_
+struct SDFSEQPDataBegin{
+	CString strRecipe_No;
+	CString strRecipe_Name;
+	CString strStart_Time;
+	CString strEnd_Time;
+	CString strOperator_ID;
+	CString strOperator_Mode;
+	CString strLoad_Stage_No;
+	CString strInsp_Stage_No;
+	CString strUnload_Stage_No;
+	CString strProbe_Contact_Cnt;
+	CString strTact_Time;
+	CString strInsp_Tact_Time;
+	CString strPre_Gamma_Time;
+	CString strLumitop_Time;
+	CString strTP_Time;
+};
+
+enum
+{
+	EQPData_Recipe_No,
+	EQPData_Recipe_Name,
+	EQPData_Start_Time,
+	EQPData_End_Time,
+	EQPData_Operator_ID,
+	EQPData_Operator_Mode,
+	EQPData_Load_Stage_No,
+	EQPData_Insp_Stage_No,
+	EQPData_Unload_Stage_No,
+	EQPData_Probe_Contact_Cnt,
+	EQPData_Tact_Time,
+	EQPData_Insp_Tact_Time,
+	EQPData_Pre_Gamma_Time,
+	EQPData_Lumitop_Time,
+	EQPData_TP_Time,
+	MaxSDFSEQPDataBeginCount
+};
+#else
+struct SDFSEQPDataBegin{
+	CString strRecipe_No;
+	CString strRecipe_Name;
+	CString strStart_Time;
+	CString strEnd_Time;
+	CString strOperator_ID;
+	CString strOperator_Mode;
+	CString strUnit_ID;
+	CString strProbe_Contact_Cnt;
+	CString strTact_Time;
+	CString strLD_Time;
+	CString strPre_Gamma_Time;
+	CString strMainView_Time;
+	CString strSideView_Time;
+	CString strTP_Time;
+	CString strUld_Time;
+};
+
+enum
+{
+	EQPData_Recipe_No,
+	EQPData_Recipe_Name,
+	EQPData_Start_Time,
+	EQPData_End_Time,
+	EQPData_Operator_ID,
+	EQPData_Operator_Mode,
+	EQPData_Unit_ID,
+	EQPData_Probe_Contact_Cnt,
+	EQPData_Tact_Time,
+	EQPData_LD_Time,
+	EQPData_P_Gamma_Time,
+	EQPData_MainView_Time,
+	EQPData_SideView_Time,
+	EQPData_TP_Time,
+	EQPData_ULD_Time,
+	MaxSDFSEQPDataBeginCount
+};
+#endif
+
+struct SDFSPanelSummaryDataVBegin{
+	CString strPanelID;
+	CString strPanelGrade;
+	CString strMainDefectCode;
+	CString strSubDefectCode1;
+	CString strSubDefectCode2;
+	CString strSubDefectCode3;
+	CString strSubDefectCode4;
+	CString strSubDefectCode5;
+	CString strTotalPointCnt;
+	CString strTotalLineCnt;
+	CString strTotalMuraCnt;
+	CString strColorShiftDefect;
+};
+
+enum
+{
+	PanelSummaryData_PanelID,
+	PanelSummaryData_PanelGrade,
+	PanelSummaryData_MainDefectCode,
+	PanelSummaryData_SubDefectCode1,
+	PanelSummaryData_SubDefectCode2,
+	PanelSummaryData_SubDefectCode3,
+	PanelSummaryData_SubDefectCode4,
+	PanelSummaryData_SubDefectCode5,
+	PanelSummaryData_TotalPointCnt,
+	PanelSummaryData_TotalLineCnt,
+	PanelSummaryData_TotalMuraCnt,
+	PanelSummaryData_ColorShiftDefect,
+	MaxPanelSummaryListBeginCount
+};
+
+struct SDFSDefectDataBegin{
+	CString strPanel_ID;
+	CString strDefect_Data_Num;
+	CString strDefect_Type;
+	CString strDefect_Code_AOI;
+	CString strDefect_Code_OP;
+	CString strDefect_Ptrn;
+	CString strDefect_Grade;
+	CString strDefect_Count;
+	CString strDefect_Region;
+	CString strDefect_Start_X;
+	CString strDefect_Start_Y;
+	CString strDefect_Area;
+	CString strDefect_Width;
+	CString strDefect_Height;
+	CString strDefect_Strength;
+	CString strInspName;
+};
+
+enum
+{
+	DefectData_Panel_ID,
+	DefectData_Defect_Data_Num,
+	DefectData_Defect_Type,
+	DefectData_Defect_Code_AOI,
+	DefectData_Defect_Code_OP,
+	DefectData_Defect_Ptrn,
+	DefectData_Defect_Grade,
+	DefectData_Defect_Count,
+	DefectData_Defect_Region,
+	DefectData_Defect_Start_X,
+	DefectData_Defect_Start_Y,
+	DefectData_Defect_Area,
+	DefectData_Defect_Width,
+	DefectData_Defect_Height,
+	DefectData_Defect_Strength,
+	MaxSDFSDefectListBeginCount
+};
+
+struct ULD_SDFSDefectDataBegin{
+	CString strPanel_ID;
+	CString strFpc_ID;
+	CString strDefect_Grade;
+	CString strTP_Function;
+	CString strDefect_code;
+	CString strDefect_Ptn;
+	CString strProcessID; // DFS항목아니고 OPV ProcessID 확인용
+};
+
+enum
+{
+	ULD_DefectData_Panel_ID,
+	ULD_DefectData_Fpc_ID,
+	ULD_DefectData_Defect_Grade,
+	ULD_DefectData_TP_Function,
+	ULD_DefectData_Defect_Code,
+	ULD_DefectData_Defect_Ptn,
+	MaxULDSDFSDefectListBeginCount
+};
+
+struct LUMITOP_SDFSDefectDataBegin{
+	CString strParam_Name;
+	CString strPoint;
+	CString strCIEX;
+	CString strCIEY;
+	CString strLV_AVG;
+	CString strLV1MinMax;
+	CString strLV2MinMax;
+	CString strLV3MinMax;
+	CString strLV4MinMax;
+	CString strLV5MinMax;
+	CString strUV1;
+	CString strUV2;
+	CString strUV3;
+	CString strUV4;
+	CString strUV5;
+};
+
+enum
+{
+	LUMITOP_DefectData_ParamName,
+	LUMITOP_DefectData_Point,
+	LUMITOP_DefectData_CIEX,
+	LUMITOP_DefectData_CIEY,
+	LUMITOP_DefectData_LVAVG,
+	LUMITOP_DefectData_LV1MinMax,
+	LUMITOP_DefectData_LV2MinMax,
+	LUMITOP_DefectData_LV3MinMax,
+	LUMITOP_DefectData_LV4MinMax,
+	LUMITOP_DefectData_LV5MinMax,
+	LUMITOP_DefectData_UV1,
+	LUMITOP_DefectData_UV2,
+	LUMITOP_DefectData_UV3,
+	LUMITOP_DefectData_UV4,
+	LUMITOP_DefectData_UV5,
+	MaxLUMITOPSDFSDefectListBeginCount
+};
+
+struct SOpvDataBegin{
+	CString strPanel_ID;
+	CString strFpc_ID;
+	CString strDefect_Grade;
+	CString strTP_Function;
+	CString strDefect_code;
+	CString strDefect_Ptn;
+	CString strData_X1;
+	CString strGate_Y1;
+	CString strData_X2;
+	CString strGate_Y2;
+	CString strData_X3;
+	CString strGate_Y3;
+	CString strImage;
+	CString strGlass_Coordinate_X1;
+	CString strGlass_Coordinate_Y1;
+	CString strGlass_Coordinate_X2;
+	CString strGlass_Coordinate_Y2;
+	CString strGlass_Coordinate_X3;
+	CString strGlass_Coordinate_Y3;
+	CString strInspName;
+	CString strChNum;
+};
+
+enum
+{
+	OpvData_Panel_ID,
+	OpvData_Fpc_ID,
+	OpvData_Defect_Grade,
+	OpvData_TP_Function,
+	OpvData_Defect_Code,
+	OpvData_Defect_Ptn,
+	OpvData_Data_X1,
+	OpvData_Gate_Y1,
+	OpvData_Data_X2,
+	OpvData_Gate_Y2,
+	OpvData_Data_X3,
+	OpvData_Gate_Y3,
+	OpvData_Image,
+	OpvData_Glass_Coordinate_X1,
+	OpvData_Glass_Coordinate_Y1,
+	OpvData_Glass_Coordinate_X2,
+	OpvData_Glass_Coordinate_Y2,
+	OpvData_Glass_Coordinate_X3,
+	OpvData_Glass_Coordinate_Y3,
+	MaxSOpvDataListBeginCount
+};
+
+class CDFSInfo{
+public:
+#if _SYSTEM_AMTAFT_
+	BOOL AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath);
+
+	BOOL DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL bTotalDfs);
+	BOOL VisionLoadPanelDFSInfo(CString strPanelID, int iMachineNum);
+	BOOL LoadOpvDataInfo(CString strPanel, int iMachineNum);
+	BOOL LoadPanelDFSInfo(CString strFilename, int iInspNum);
+	BOOL LoadDefectListInfo(CString strPanel, int InspNum, int iCount);
+	void AddDefectCodeResult(CString strPanelID, int iErrorNum, int iTpResult, int iType);
+	void SetEQPDataInfo(CString strRecipe_No, CString strRecipe_Name, CString strStart_Time, CString strEnd_Time, CString strOperator_ID, CString strOperator_Mode, CString strLoad_Stage_No, CString strInsp_Stage_No, CString strUnload_Stage_No, CString strProbe_Contact_Cnt, CString strTact_Time, CString strInsp_Time, CString strPre_Gamma_Time, CString strLumitop_Time, CString strTP_Time);
+	void IndexZoneInspResultInfo(CString strPanelID);
+
+	CString GetDefectListInfo(int ii, int InspNum);
+
+	CString GetPanelSummaryInfo();
+	BOOL LoadPanelSummaryInfo(CString strPanel);
+	void SetPanelSummaryInfo();
+
+	void AddTotalDefectListInfo(vector <SDFSDefectDataBegin> vecAoiData, vector <SDFSDefectDataBegin> vecViewingData, vector <LUMITOP_SDFSDefectDataBegin> vecLumitopData, vector <ULD_SDFSDefectDataBegin> vecOpvData);
+#else
+	BOOL GammaSavePanelDFS_SUM(CString strPANEL_ID, CString strFpcID, CString strSumPath);
+
+	BOOL GammaDfsInfoLoad(CString strPanelID);
+	void SetEQPDataInfo(CString strRecipe_No, CString strRecipe_Name, CString strStart_Time, CString strEnd_Time, CString strOperator_ID, CString strOperator_Mode, CString strUnit_ID, CString strProbe_Contact_Cnt, CString strTact_Time, CString strLD_Time, CString strP_Gamma_Time, CString strMainView_Time, CString strSideView_Time, CString strTP_Time, CString strUld_Time);
+#endif
+
+	map<CString, map<CString, CString>> m_mapPanelDefect;
+	map<CString, int> m_mapDefectCodeList;
+
+	vector <SDFSDefectDataBegin> m_DefectDataList;
+	vector <ULD_SDFSDefectDataBegin> m_ULD_DefectDataList;
+	vector <LUMITOP_SDFSDefectDataBegin> m_LUMITOP_DefectDataList;
+	vector <SOpvDataBegin> m_OpvDataList[2];
+
+	SDFSHeaderInfo m_HeaderInfo;
+	SDFAPanel_Data_Begin m_PanelDataBegin;
+	SDFSEQPDataBegin m_EQPDataInfo;
+	SDFSPanelSummaryDataVBegin m_PanelSummaryInfo;
+
+	PGDfsList m_GammaDfsInfo;
+	
+	CString m_strVisionResult;
+	CString m_strViewingResult;
+	CString m_strLumitopResult;
+	
+	CDFSInfo();
+	~CDFSInfo();
+
+	void Clear();
+	BOOL CopyImage(CString strFilePath, CString strSendFilePath);
+
+private:
+	// AMT AFT GAMMA 공통함수
+
+	void ClearPanelInfo();
+
+	int GetItemCount(CString strInfo);
+	CString GetExtractionMsg(CString& strMsg);
+	CString GetLastExtractionMsg(CString& strMsg);
+	CString WriteString(CString strWrite);
+
+	CString GetPanelDatatBegin();
+	BOOL LoadPanelDataBegin(CString strPanel);
+	void SetPanelDataBegin(CString strPanel_ID, CString strOwner_CODE, CString strOwner_Type, CString strProduct_ID, CString strProcess_ID, CString strProduct_Group, CString strLOT_ID, CString strCST_ID, CString strGroup_ID, CString strArray_Lot_ID, CString strArray_Glass_ID);
+
+	CString GetEQPDataInfo();
+	BOOL LoadEQPDataInfo(CString strPanel);
+	
+	BOOL GetTitleCheck(CStdioFile& sFile, int iSize);
+
+	void SetBCServerData(CString strPanel, int iType, CDFSInfo DfsInfo);
+};
