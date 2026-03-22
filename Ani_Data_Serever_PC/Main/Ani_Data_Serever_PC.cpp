@@ -1042,6 +1042,37 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strFpcID) //
 {
 	CString strFilePath, strShift, strCode, strGrade, strCodeGrade;
+
+	// 优先从数据库获取缺陷码
+	BOOL bGetFromDB = FALSE;
+	if (GetDBInterface().IsConnected())
+	{
+		CString strDBCode, strDBGrade;
+		if (GetDBInterface().QueryDefectCodeByScreenID(strFpcID, strDBCode, strDBGrade))
+		{
+			if (!strDBCode.IsEmpty())
+			{
+				m_pTestLog->LOG_INFO(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+					strFpcID, strDBCode, strDBGrade);
+				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
+				bGetFromDB = TRUE;
+			}
+		}
+		else
+		{
+			m_pTestLog->LOG_INFO(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+		}
+	}
+
+	// 如果从数据库获取成功，则直接返回
+	if (bGetFromDB)
+	{
+		return;
+	}
+
+	// 数据库获取失败，fallback到文件读取
+	m_pTestLog->LOG_INFO(_T("SetLoadResultCode: Fallback to file read"));
+
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID); // 0628
 
@@ -3902,6 +3933,19 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strARSPortNum = ini[_T("DATA")][_T("ARS_PORT")];
 	theApp.m_strFFUEndPoint = ini[_T("DATA")][_T("FFU_END")];
 	theApp.m_strPGName = ini[_T("PG")][_T("PGNAME")];
+
+#if _SYSTEM_AMTAFT_
+	// ICW 配置（点灯检软件通信）
+	theApp.m_strICWServerIP = ini[_T("ICW")][_T("SERVER_IP")];
+	theApp.m_strICWServerPort = ini[_T("ICW")][_T("SERVER_PORT")];
+
+	// MySQL 数据库配置
+	theApp.m_strDBHost = ini[_T("DATABASE")][_T("HOST")];
+	theApp.m_strDBPort = ini[_T("DATABASE")][_T("PORT")];
+	theApp.m_strDBName = ini[_T("DATABASE")][_T("NAME")];
+	theApp.m_strDBUser = ini[_T("DATABASE")][_T("USER")];
+	theApp.m_strDBPassword = ini[_T("DATABASE")][_T("PASSWORD")];
+#endif
 
 	//>>210422 
 	theApp.m_bPGCodeUsable = ini[_T("PG")][_T("PGCODE_USABLE")];

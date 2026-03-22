@@ -1,4 +1,4 @@
-﻿
+
 // Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp 览侩 橇肺弊伐俊 措茄 林 庆歹 颇老
 //
 #pragma once
@@ -11,6 +11,7 @@
 #include "stdafx.h"
 #include "Logger.h"
 #include "MsgBox.h"
+#include "Migration.h"
 #include "AlignThread.h"
 #include "AlignManager.h"
 #include "EqInterface.h"
@@ -33,9 +34,13 @@
 #include "RankThread.h"
 #include "ManualThread.h"
 #include "ComView.h"
+#include "ICWCommManager.h"
+#include "DBInterface.h"
 
 #else
+
 #include "GammaThread.h"
+//#include "ICWCommManager.h"  // Moved to #if _SYSTEM_AMTAFT
 #endif
 
 // CAni_Data_Serever_PCApp:
@@ -204,6 +209,7 @@ public:
 	CPgManager m_PgSocketManager[PgServerMaxCount];
 	CTpManager m_TpSocketManager;
 	COpvManager m_OpvSocketManager[ChMaxCount];
+	CICWCommManager m_ICWCommManager;  // ICW通信管理器
 	//>>210422
 	CComView *m_pComView;
 	CLogger* m_pCodeLog[SocketCodeMax];
@@ -324,6 +330,16 @@ public:
 	CString m_strARSPortNum;
 	CString m_strFFUEndPoint;
 	CString m_strPGName;
+
+	// ICW 配置（点灯检软件通信）- 始终可用
+	CString m_strICWServerIP;
+	CString m_strICWServerPort;
+
+	CString m_strDBHost;
+	CString m_strDBPort;
+	CString m_strDBName;
+	CString m_strDBUser;
+	CString m_strDBPassword;
 
 	CString m_strDefectTitleName[DefectTitleMaxCount];
 	BOOL m_bContact[PG_MAX_CH];
