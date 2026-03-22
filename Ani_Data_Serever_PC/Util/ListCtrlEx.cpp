@@ -342,7 +342,7 @@ void CListCtrlEx::CreateComboBox()
 	InvalidateRect(&rect);
 
 	if (!m_cmbGrade)
-		m_cmbGrade.Create(CBS_DROPDOWN | WS_CHILD | WS_VSCROLL | WS_TABSTOP | WS_VISIBLE, rect, this, 0);
+		m_cmbGrade.Create(CBS_DROPDOWN | WS_CHILD | WS_VSCROLL | WS_TABSTOP | WS_VISIBLE, rect, this, IDC_RANK_GRADE_COMBO);
 	else
 	{
 		m_cmbGrade.MoveWindow(rect);
@@ -366,7 +366,8 @@ void CListCtrlEx::CreateEditBox()
 	GetSubItemRect(m_nItem, m_nSubItem, LVIR_LABEL, rect);   // 클릭한 곳에 테두리 값을 rect로 얻어옴	
 	InvalidateRect(&rect);
 
-	m_ctrEdit.Create(ES_LEFT | ES_AUTOHSCROLL | WS_BORDER | WS_CHILD, rect, this, 0); // 얻어온 rect 값으로 에디트 박스 생성
+	// NOTE: control ID must be non-zero, otherwise MFC will warn and GetDlgItem(0) will fail.
+	m_ctrEdit.Create(ES_LEFT | ES_AUTOHSCROLL | WS_BORDER | WS_CHILD, rect, this, IDC_LISTCTRLEX_INPLACE_EDIT); // 얻어온 rect 값으로 에디트 박스 생성
 
 	strGetText = GetItemText(m_nItem, m_nSubItem);       //아이템 얻어오기
 	m_ctrEdit.MoveWindow(rect);

@@ -3,6 +3,8 @@
 #if _SYSTEM_AMTAFT_
 #include "DlgMainView.h"
 #include "DlgMainLog.h"
+#include "DBInterface.h"
+#include "DataModels.h"
 #else
 #include "DlgGammaMain.h"
 #endif
@@ -11,6 +13,53 @@
 #include "DFSInfo.h"
 #include "AniUtil.h"
 #include "FileSupport.h"
+
+////////////////////////////////////////////////////////////////////////////////
+// CPlcThread（PLC 主线程，总体流程说明，给不写代码的工程人员看）
+//
+// 1) 角色定位
+//    - 整机的「中枢调度线程」，负责：
+//        • 与 PLC 通讯：读写各种 Word/Bit 地址（通过 MNetH）
+//        • 监控 TP / PG / OPV / Gamma / AOI 等子系统状态（各 Manager 已把结果写入 PLC / 内存）
+//        • 进行班别切换、Daily Log 拷贝、Alarm/Interlock 管理
+//        • 汇总每片 Panel 的最终检测结果，生成 DFS 报工结构并交给 DFSClient 上传
+//
+// 2) 主循环 `ThreadRun()` 的大概节奏
+//    - 每 50 ms 循环一次：
+//        • `CFTPClient()`：扫描待上传的 DFS 文件队列（SUM/INDEX 等）
+//        • 检查 PLC 是否在线：`theApp.m_pEqIf->m_pMNetH->IsConnected()`
+//        • 处理机种/班别切换时间，到点后做 Data Reset、CSV 日志拷贝到服务器
+//        • 轮询各类 PLC Bit/Word：设备起停、Alarm、TP/PG/OPV/Gamma End Bit、ULD End Bit 等
+//        • 当检测到某片 Panel 完成时，调用 `SumDFSDataStart()` 做 DFS 报工
+//
+// 3) DFS 报工主流程（以 AOI 线为例）
+//    - AOI/TP/PG/OPV 等模块先把结果写入 PLC 的 DFS 区：
+//        • TP/Contact/Gamma/OPV 结果 → 各 Manager → PLC Word/Bit（详见 TP/PG/OPV Manager 头部注释）
+//        • Flow 线程在 PLC 检测「各工序 End Bit 全到位」后，打包为一条 `DfsData` 写入 DFS Word 区
+//    - `CPlcThread::SumDFSDataStart(iNum, iOkNg, iType)`：
+//        • 根据 Stage 编号 iNum 和 OK/NG，调用 `MNetH::GetDfsData()` 读回 `DfsData` 结构
+//        • 把数值字段转成字符串、人可读的 "OK/NG/BYPASS" 文本，填进 `DfsDataValue`
+//        • 调用 `theApp.m_pFTP->DfsAddTransferFile(&pDfsDateValue)` 加入 DFS 上传队列
+//        • 置位 `eBitType_UnloadOK/NGDFSEnd1 + iNum` 告知 PLC：该 Stage 的 DFS 已处理完毕
+//
+// 4) 典型一片 Panel 的整体时序（只看主干，细节见各模块注释）
+//    - TP/PG/OPV/Gamma：
+//        • 各 Manager 通过 Socket 与外部设备交互，收到结果后：
+//              → 计算 Zone / Panel / Stage
+//              → 写 PLC 结果 Word（OK/NG/Rank/Code 等）
+//              → 置相应 End Bit（InspectionEnd / ContactEnd / PreGammaEnd / VSResultEnd 等）
+//    - Flow / PLC：
+//        • 当同一片 Panel 的 TP / Contact / Gamma / OPV / AOI 必要 End Bit 全部 ON：
+//              → 把这片 Panel 的所有结果打包写入 DFS 区（`DfsData` 结构，按 Stage 编号 iNum）
+//    - PLC 线程 `CPlcThread`：
+//        • 检测到需要报工的 Stage → 调用 `SumDFSDataStart()`
+//        • DFSClient 线程收到 `DfsAddTransferFile` 请求后，通过 FTP 上传 SUM/INDEX/图片信息到 DFS Server
+//
+// 5) 查问题时的建议阅读顺序
+//    - 先看：本文件中 `ThreadRun()` & `SumDFSDataStart()` 上方的大块注释（总时序 + DFS 字段说明）
+//    - 再看：`TpManager.cpp` / `PgManager.cpp` / `OpvManager.cpp` 顶部的“时序总览”注释，理解各工序如何写 PLC
+//    - 然后：在 `MNetH.cpp` 中对应的 SetPlcBitData / SetWordResultOffSet / GetDfsData 等函数了解地址实际读写
+////////////////////////////////////////////////////////////////////////////////
 
 CPlcThread::CPlcThread()
 {
@@ -61,12 +110,26 @@ void CPlcThread::ThreadRun()
 	CTime curTime, HalfMinute;
 	
 	BOOL bTpFlag = FALSE;
+	// Track PLC connection transitions so operators can confirm link status from log.
+	int prevPlcConnected = -1; // -1 = unknown (first loop), 0 = disconnected, 1 = connected
 	
 
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
 	{
 		CFTPClient();
 		theApp.m_PlcConectStatus = theApp.m_pEqIf->m_pMNetH->IsConnected();
+
+		// Log PLC connection state changes (no spam, only on transition).
+		const int curPlcConnected = theApp.m_PlcConectStatus ? 1 : 0;
+		if (prevPlcConnected != curPlcConnected)
+		{
+			prevPlcConnected = curPlcConnected;
+			if (curPlcConnected)
+				theApp.m_PlcLog->LOG_INFO(_T("[PLC] CONNECTED (IsConnected=TRUE)"));
+			else
+				theApp.m_PlcLog->LOG_WARN(_T("[PLC] DISCONNECTED (IsConnected=FALSE)"));
+		}
+
 		if (theApp.m_PlcConectStatus)
 		{
 			ProgramStartStopLog();
@@ -2706,6 +2769,221 @@ void CPlcThread::SumDefectCodeStart(int iNum, int iType, int iOkNg)
 
 void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 {
+	////////////////////////////////////////////////////////////////////////////////
+	// DFS 汇总时序总览（培训用说明）：
+	//
+	//   PG / TP / OPV / Contact / Gamma 结果
+	//         │
+	//         ▼
+	//     PLC Bit / Word (由 PgManager / TpManager / OpvManager / 其它模块写入)
+	//         │
+	//         ▼
+	//     Flow/Plc 线程
+	//         ├─ 轮询各类 END Bit（ContactOnEnd / TouchInspectionEnd / VisionEnd / DFSEnd 等）
+	//         ├─ 读取对应结果 Word（ContactResult / TouchResult / VisionResult / DefectCode/Grade 等）
+	//         ├─ 生成/更新 DFS 区结构 `DfsData`（写入 PLC Word：eWordType_DFSValue1/UnloadOKDFSValue1/...）
+	//         └─ 在适当时机调用本函数 `SumDFSDataStart` 进行 DFS 报工。
+	//
+	//   本函数职责：
+	//     1) 从 PLC DFS 区读取 `DfsData` 结构：
+	//          - OK Panel : eWordType_UnloadOKDFSValue1 + iNum (或 eWordType_DFSValue1 + iNum)
+	//          - NG Panel : eWordType_UnloadNGDFSValue1 + iNum (或 eWordType_GammaNGDFSValue1 + iNum)
+	//     2) 将结构体字段转换成 `DfsDataValue`（字符串形式），包括：
+	//          - PanelID / FpcID / ModelID / IndexNum / ChNum
+	//          - Start/End/Load/Unload 时间、TactTime、TP/PreGamma 时间
+	//          - Contact / PreGamma / TP / AOI/OPV / Lumitop 结果 (OK/NG/BYPASS)
+	//          - ContactCount / HandlerNUM 等。
+	//     3) 调用 `theApp.m_pFTP->DfsAddTransferFile(pDfsDateValue)`：
+	//          将该 Panel 加入 DFS 上传队列，交由 `CDFSClient::RunDfsUploadThread` 异步生成 SUM/INDEX/Image 等。
+	//     4) 根据 iOkNg 及机型，在 PLC 中写 DFSEnd Bit：
+	//          - AOI 线：eBitType_UnloadOKDFSEnd1/eBitType_UnloadNGDFSEnd1
+	//          - Gamma 线：eBitType_DFSEnd1/eBitType_GammaNGDFSEnd1
+	//
+	//   简略 ASCII 流程（单片）：
+	//       (PG/TP/OPV 结果 → PLC → Flow → 写入 DfsData)
+	//           │
+	//           ▼
+	//       CPlcThread::SumDFSDataStart()
+	//           ├─ MNetH::GetDfsData(...)  读取 DfsData
+	//           ├─ 填充 DfsDataValue      (转字符串、映射 OK/NG 文本)
+	//           ├─ theApp.m_pFTP->DfsAddTransferFile(...)
+	//           └─ SetPlcBitData(eBitType_UnloadOK/NGDFSEnd1 + iNum, TRUE)
+	//
+	// ─────────────────────────────────────────────────────────────────────────────
+	//   A-Zone 具体时序 & 地址偏移示意（以 TP 为例，单片 Panel）
+	//
+	//   1) TP 结果写 PLC（CTpManager::OnDataReceived）
+	//      - 逻辑：TP → Ani → PLC（MNetH）
+	//      - 代码：
+	//          OK 时：
+	//              SetWordResultOffSet(
+	//                  eWordType_AZoneTouchResult + iZoneNum,   // Zone 基地址：A-Zone=0
+	//                  iPanelNum,                               // Panel 偏移：0~N（A-Zone 内第几片）
+	//                  &m_codeOk);                              // 写入 TP OK Code
+	//              SetPlcBitData(
+	//                  eBitType_AZoneTouchInspectionEnd + iZoneNum, // A-Zone TP End Bit 基地址
+	//                  iPanelNum,                                   // 同样用作 Panel 偏移
+	//                  TRUE);                                       // 置位 END Bit
+	//
+	//          NG 时：
+	//              SetWordResultOffSet(eWordType_AZoneTouchResult + iZoneNum, iPanelNum, &m_codeFail);
+	//              SetPlcBitData(eBitType_AZoneTouchInspectionEnd + iZoneNum, iPanelNum, TRUE);
+	//
+	//      - 地址偏移理解：
+	//          • Zone 偏移：eWordType_AZoneTouchResult      + iZoneNum     → A/B/C/D-Zone
+	//          • Panel 偏移：SetWordResultOffSet(..., iPanelNum, ...)      → 该 Zone 内第几片
+	//          • Bit 同理： eBitType_AZoneTouchInspectionEnd + iZoneNum, iPanelNum
+	//
+	//   2) Flow/Plc 线程汇总到 DFS 结构（MNetH::SetDfsData* 系列，非本函数内部）
+	//      - 条件：
+	//          • A-ZoneTouchInspectionEnd(Zone, Panel) == ON
+	//          • 对应 PG/OPV/Contact/Gamma 等 END Bit 也到位
+	//      - 动作：
+	//          • 根据 Zone/Panel 计算当前 Stage（iNum）和 DFS 区起始 Word：
+	//                eWordType_DFSValue1 + iNum          // Gamma 线（OK）
+	//                eWordType_GammaNGDFSValue1 + iNum   // Gamma 线（NG）
+	//                eWordType_UnloadOKDFSValue1 + iNum  // AOI 线（OK）
+	//                eWordType_UnloadNGDFSValue1 + iNum  // AOI 线（NG）
+	//          • 将 A-Zone 的 TP Result 映射到 DfsData：
+	//                pDfsData.m_TpResult / m_TpResult2 / m_Contact / m_AOIInpsect / m_OPView ...
+	//          • 按固定字段顺序写入 PLC DFS 区（结构体式连写，多 Word 连续区，内部再有字段偏移）。
+	//
+	//   3) 本函数 SumDFSDataStart 读 DFS 区 → 生成 DfsDataValue → 报工
+	//      - 读 DFS 区：
+	//            GetDfsData(
+	//                eWordType_DFSValue1       + iNum   // 或 UnloadOK/NGDFSValue1 / GammaNGDFSValue1
+	//                , &pDfsData);
+	//      - 解析时：
+	//            pDfsDateValue.m_TpResult  = Int2String(pDfsData.m_TpResult);
+	//            pDfsDateValue.m_TpResult2 = pDfsData.m_TpResult2 == 1 ? "OK" : ...;
+	//            // Contact / PreGamma / AOI / OPView 等字段同理
+	//      - 报工：
+	//            theApp.m_pFTP->DfsAddTransferFile(&pDfsDateValue);   // 交给 DFS 线程生成 SUM/INDEX
+	//            SetPlcBitData(eBitType_UnloadOK/NGDFSEnd1 + iNum, TRUE); // 通知 PLC：该 Stage DFS 已完成
+	//
+	//   4) A-Zone 整体信号链路总结（文字版时序，一片 Panel）
+	//      TP #RT → CTpManager::OnDataReceived
+	//          → SetWordResultOffSet(eWordType_AZoneTouchResult + Zone, Panel, OK/NG)
+	//          → SetPlcBitData(eBitType_AZoneTouchInspectionEnd + Zone, Panel, ON)
+	//          → Flow/Plc 线程检测到 A-ZoneTouchInspectionEnd ON
+	//          → 汇总 PG/OPV/Contact/Gamma 结果，写入 eWordType_*DFSValue1 + Stage
+	//          → CPlcThread::SumDFSDataStart(Stage, OK/NG, Type)
+	//          → FTP DfsAddTransferFile() → DFS Server 生成 SUM/INDEX/Image → MES/上位。
+	//
+	// ─────────────────────────────────────────────────────────────────────────────
+	//   B-Zone & 其它 Zone（结构 & 偏移的复用关系说明）
+	//
+	//   1) Word/Bit 基址
+	//      - A-Zone 使用：
+	//          eWordType_AZoneTouchResult
+	//          eBitType_AZoneTouchInspectionEnd
+	//      - B/C/D-Zone 只是在此基础上加 Zone 偏移：
+	//          eWordType_AZoneTouchResult      + iZoneNum   // iZoneNum = 0(A),1(B),2(C),3(D)...
+	//          eBitType_AZoneTouchInspectionEnd + iZoneNum
+	//      - 因此：**所有 Zone 的 TP 结果/End Bit 的编码方式完全一致，仅 Zone 偏移不同。**
+	//
+	//   2) Panel 维度
+	//      - 同一 Zone 下的多片 Panel，通过第二参数 iPanelNum 区分：
+	//          SetWordResultOffSet(BaseWord + iZoneNum, iPanelNum, ...);
+	//          SetPlcBitData(BaseBit + iZoneNum, iPanelNum, TRUE);
+	//      - DFS 区写入时，Stage(iNum) 已结合 Zone+Panel 计算好；本函数只关心 iNum，不区分是哪一片 Panel。
+	//
+	//   3) 对应到 DfsData 结构
+	//      - 不论 A/B/C/D-Zone，最终都会汇总到统一的 DfsData 结构：
+	//          m_TpResult, m_TpResult2, m_Contact, m_PreGamma, m_OPView, m_AOIInpsect...
+	//      - SumDFSDataStart 解读的也是这同一套字段，所以：**Zone 维度已经在 PLC 端折算为 Stage(iNum)**。
+	//
+	// ─────────────────────────────────────────────────────────────────────────────
+	//   Contact（接触测试）信号链路示意
+	//
+	//   1) Contact 结果写 PLC（接触测试 Handler 模块 → MNetH）
+	//      - 逻辑：Contact → Ani → PLC（MNetH）
+	//      - 典型代码风格（伪代码，仅说明地址关系）：
+	//          OK/NG/BYPASS 时：
+	//              SetWordResultOffSet(
+	//                  eWordType_ContactResult + iZoneNum,   // 每个 Zone 一组 Contact Result Word
+	//                  iPanelNum,                            // Zone 内 Panel 偏移
+	//                  &ContactCode);                        // 例如 1=OK, 2=NG, 3=BYPASS
+	//              SetPlcBitData(
+	//                  eBitType_ContactInspectionEnd + iZoneNum, // Contact End Bit 基址
+	//                  iPanelNum,
+	//                  TRUE);
+	//
+	//   2) Flow/Plc 汇总写入 DFS
+	//      - 条件：ContactInspectionEnd(Zone, Panel) == ON，且 TP/PG/OPV/Gamma 对应 End Bit 均满足策略。
+	//      - 动作：
+	//          • 选取对应 Stage(iNum) 的 DFS 区（eWordType_*DFSValue1 + iNum）
+	//          • 填写：pDfsData.m_Contact / m_PreGammaContactStatus 等字段
+	//
+	//   3) SumDFSDataStart 中的解析
+	//      - 字段对应关系：
+	//            pDfsDateValue.m_Contact = pDfsData.m_Contact == 1 ? _T("OK")
+	//                                         : pDfsData.m_Contact == 2 ? _T("NG")
+	//                                         : _T("BYPASS");
+	//            pDfsDateValue.m_PreGammaContactStatus = Int2String(pDfsData.m_PreGammaContactStatus);
+	//      - 对上位来说：Contact 信息只需关心 DfsData 解读结果，不关心具体 Zone/Panel 细节。
+	//
+	// ─────────────────────────────────────────────────────────────────────────────
+	//   OPV（Optical View）信号链路示意
+	//
+	//   1) OPV 结果写 PLC（COpvManager::OnDataReceived 或类似回调）
+	//      - 逻辑：OPV → Ani → PLC（MNetH）
+	//      - 地址关系：
+	//          • Word：
+	//                eWordType_OpvResult + iZoneNum, iPanelNum, &OpvCode
+	//                // 与 TP/Contact 一致：Zone 偏移 + Panel 偏移
+	//          • Bit：
+	//                eBitType_OpvInspectionEnd + iZoneNum, iPanelNum, TRUE
+	//
+	//   2) 写入 DFS 区
+	//      - Flow/Plc 检测到 OpvInspectionEnd ON 后：
+	//          • 合并当前 Stage 的 PG/TP/Contact/Gamma/AOI 结果
+	//          • 将 OPV 结果写入：pDfsData.m_OPView，对应 DFS 区连续 Word 内的某一字段
+	//
+	//   3) SumDFSDataStart 中的解析
+	//      - 字段对应关系：
+	//            pDfsDateValue.m_opViewResult =
+	//                    pDfsData.m_OPView == 1 ? _T("OK")
+	//                  : pDfsData.m_OPView == 2 ? _T("NG")
+	//                  : _T("BYPASS");
+	//      - 这样，多个 Panel/Zone 的 OPV 状态最后都折算到按 Stage 汇总的 DFS 记录里。
+	//
+	// ─────────────────────────────────────────────────────────────────────────────
+	//   Gamma / PreGamma（含 GammaNG DFS）的信号链路示意
+	//
+	//   1) Gamma & PreGamma 测试写 PLC（CPgManager / Gamma Handler）
+	//      - 逻辑：Gamma → Ani → PLC（MNetH）
+	//      - 地址关系示意：
+	//          • PreGamma Result：
+	//                eWordType_PreGammaResult + iZoneNum, iPanelNum, &PreGammaCode
+	//                eBitType_PreGammaInspectionEnd + iZoneNum, iPanelNum, TRUE
+	//          • Gamma Result（若与 PreGamma 分开编码）：
+	//                eWordType_GammaResult + iZoneNum, iPanelNum, &GammaCode
+	//                eBitType_GammaInspectionEnd + iZoneNum, iPanelNum, TRUE
+	//
+	//   2) DFS 区分 OK / NG 的地址
+	//      - OK Panel：
+	//            eWordType_DFSValue1      + iNum   // Gamma 线 OK DFS 区
+	//      - NG Panel：
+	//            eWordType_GammaNGDFSValue1 + iNum // Gamma 线 NG DFS 区
+	//      - AOI 线 OK/NG DFS 同理使用：
+	//            eWordType_UnloadOKDFSValue1 + iNum
+	//            eWordType_UnloadNGDFSValue1 + iNum
+	//
+	//   3) SumDFSDataStart 中的解析
+	//      - Gamma/PreGamma 相关字段：
+	//            pDfsDateValue.m_PreGamma  = pDfsData.m_PreGamma == 1 ? _T("OK")
+	//                                         : pDfsData.m_PreGamma == 2 ? _T("NG")
+	//                                         : _T("BYPASS");
+	//            pDfsDateValue.m_PreGammaTime = Int2String(pDfsData.m_PreGammaTime);
+	//            pDfsDateValue.m_Lumitop      = pDfsData.m_Lumitop == 1 ? _T("OK")
+	//                                              : pDfsData.m_Lumitop == 2 ? _T("NG")
+	//                                              : _T("BYPASS");
+	//      - 对比 SumDFSDataStart 开头的 GetDfsData：
+	//            • OKPanel → eWordType_DFSValue1       + iNum
+	//            • NGPanel → eWordType_GammaNGDFSValue1 + iNum
+	//        即：**Gamma 线 OK/NG 使用不同 DFS 段，但内部字段布局一致，由 iOkNg 控制起始基址。**
+	////////////////////////////////////////////////////////////////////////////////
 	m_csSumDFS.Lock();
 
 	DfsData pDfsData;
@@ -2739,7 +3017,47 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	pDfsDateValue.m_TpResult = Int2String(pDfsData.m_TpResult);
 	pDfsDateValue.m_Contact = pDfsData.m_Contact == 1 ? _T("OK") : pDfsData.m_Contact == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_PreGamma = pDfsData.m_PreGamma == 1 ? _T("OK") : pDfsData.m_PreGamma == 2 ? _T("NG") : _T("BYPASS");
+
+#if _SYSTEM_AMTAFT_
+	// 从 MySQL 查询 AOI 结果（点灯检数据）
+	CString strPanelID = CStringSupport::ToWString(pDfsData.m_PanelID, sizeof(pDfsData.m_PanelID));
+	CString strFpcID = CStringSupport::ToWString(pDfsData.m_FpcID, sizeof(pDfsData.m_FpcID));
+	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
+
+	CString strUniqueID = _T("");
+	CIDMapInfo idMapInfo;
+	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
+	{
+		strUniqueID = idMapInfo.UniqueID;
+	}
+
+	if (!strUniqueID.IsEmpty())
+	{
+		CInspectionResult aoiResult;
+		if (GetDBInterface().QueryByUniqueID(strUniqueID, aoiResult))
+		{
+			if (aoiResult.AOIResult.CompareNoCase(_T("OK")) == 0)
+				pDfsDateValue.m_AOIInpsect = _T("OK");
+			else
+				pDfsDateValue.m_AOIInpsect = _T("NG");
+			LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from MySQL: %s, UniqueID: %s"),
+				strQueryID, aoiResult.AOIResult, strUniqueID));
+		}
+		else
+		{
+			pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+			LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from PLC: %s, MySQL Error: %s"),
+				strQueryID, pDfsDateValue.m_AOIInpsect, GetDBInterface().GetLastError()));
+		}
+	}
+	else
+	{
+		pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+	}
+#else
 	pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+#endif
+
 	pDfsDateValue.m_TpResult2 = pDfsData.m_TpResult2 == 1 ? _T("OK") : pDfsData.m_TpResult2 == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_Lumitop = pDfsData.m_Lumitop == 1 ? _T("OK") : pDfsData.m_Lumitop == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_ContactCount = Int2String(pDfsData.m_ContactCount);
@@ -3174,7 +3492,18 @@ void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
 	DfsData pDfsData;
 	DfsDataValue pDfsDateValue;
 
-	theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_DFSValue1 + iNum, &pDfsData);
+#if _SYSTEM_AMTAFT_
+	// 根据 OK/NG 从不同的 PLC 地址读取
+	if (iOkNg == OKPanel)
+		theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadOKDFSValue1 + iNum, &pDfsData);
+	else
+		theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadNGDFSValue1 + iNum, &pDfsData);
+#else
+	if (iOkNg == OKPanel)
+		theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_DFSValue1 + iNum, &pDfsData);
+	else
+		theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_GammaNGDFSValue1 + iNum, &pDfsData);
+#endif
 
 	//pDfsDateValue.m_FpcID = CStringSupport::ToWString(pDfsData.m_FpcID, sizeof(pDfsData.m_FpcID));
 	//pDfsDateValue.m_PanelID = CStringSupport::ToWString(pDfsData.m_PanelID, sizeof(pDfsData.m_PanelID));
@@ -3214,7 +3543,47 @@ void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
 	pDfsDateValue.m_TpResult = Int2String(pDfsData.m_TpResult);
 	pDfsDateValue.m_Contact = pDfsData.m_Contact == 1 ? _T("OK") : pDfsData.m_Contact == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_PreGamma = pDfsData.m_PreGamma == 1 ? _T("OK") : pDfsData.m_PreGamma == 2 ? _T("NG") : _T("BYPASS");
+
+#if _SYSTEM_AMTAFT_
+	// 从 MySQL 查询 AOI 结果（点灯检数据）
+	CString strPanelID = CStringSupport::ToWString(pDfsData.m_PanelID, sizeof(pDfsData.m_PanelID));
+	CString strFpcID = CStringSupport::ToWString(pDfsData.m_FpcID, sizeof(pDfsData.m_FpcID));
+	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
+
+	CString strUniqueID = _T("");
+	CIDMapInfo idMapInfo;
+	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
+	{
+		strUniqueID = idMapInfo.UniqueID;
+	}
+
+	if (!strUniqueID.IsEmpty())
+	{
+		CInspectionResult aoiResult;
+		if (GetDBInterface().QueryByUniqueID(strUniqueID, aoiResult))
+		{
+			if (aoiResult.AOIResult.CompareNoCase(_T("OK")) == 0)
+				pDfsDateValue.m_AOIInpsect = _T("OK");
+			else
+				pDfsDateValue.m_AOIInpsect = _T("NG");
+			LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from MySQL: %s, UniqueID: %s"),
+				strQueryID, aoiResult.AOIResult, strUniqueID));
+		}
+		else
+		{
+			pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+			LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from PLC: %s, MySQL Error: %s"),
+				strQueryID, pDfsDateValue.m_AOIInpsect, GetDBInterface().GetLastError()));
+		}
+	}
+	else
+	{
+		pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+	}
+#else
 	pDfsDateValue.m_AOIInpsect = pDfsData.m_AOIInpsect == 1 ? _T("OK") : pDfsData.m_AOIInpsect == 2 ? _T("NG") : _T("BYPASS");
+#endif
+
 	pDfsDateValue.m_TpResult2 = pDfsData.m_TpResult2 == 1 ? _T("OK") : pDfsData.m_TpResult2 == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_Lumitop = pDfsData.m_Lumitop == 1 ? _T("OK") : pDfsData.m_Lumitop == 2 ? _T("NG") : _T("BYPASS");
 	pDfsDateValue.m_ContactCount = Int2String(pDfsData.m_ContactCount);
@@ -3238,7 +3607,7 @@ void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
 
 	theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI DFS OPV Copy Start"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
 
-	CString strPath, strFilePath, strCodeCount, strShift, strCodeGrade, strPanelID;
+	CString strPath, strFilePath, strCodeCount, strShift, strCodeGrade;
 	
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strPanelID = pDfsDateValue.m_PanelID;

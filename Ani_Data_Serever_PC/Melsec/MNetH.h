@@ -7,11 +7,31 @@
 //      -------     -------      ------      ----
 //		   1.0      2005/12/20   Grouchy	 Create	
 //		   1.1      2006/02/07   cha		 Modify
-//		   1.2      2006/02/09   cha		 Modify(TrimSpace�߰�)
-//		   1.3      2006/02/15   cha		 Modify(FillSpace����)
-//		   1.4      2006/02/27   cha		 SetJobOrder_ToLowerEqWord()�Լ� �߰�
-//		   1.5      2015/11/16   JSLee       E4 Melsec Function �߰�.
+//		   1.2      2006/02/09   cha		 Modify(TrimSpace�߰�)
+//		   1.3      2006/02/15   cha		 Modify(FillSpace����)
+//		   1.4      2006/02/27   cha		 SetJobOrder_ToLowerEqWord()�Լ� �߰�
+//		   1.5      2015/11/16   JSLee       E4 Melsec Function �߰�.
 //
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// 中文说明：
+//   `MNetH` 为三菱 PLC (MELSEC) MNET 通讯的封装类，负责与下位 PLC 建立
+//   连接、读写 Bit/Word 区域，并将底层接口封装为上层易用的函数接口。
+//
+//   - 主要职责：
+//       * 打开/关闭 PLC 通讯通道（`MelsecOpen` / `MelsecClose`、`Start` / `Stop`）
+//       * 读写 PLC Bit / Word 区域（`ReadLB`/`ReadLW`、`WriteLB`/`WriteLW`，
+//         以及扩展地址版本 `ReadLWEx` / `WriteLWEx` / `ReadZREx` / `WriteZREx`）
+//       * 提供设备共通的地址访问封装函数：
+//           - `GetPlcBitData` / `SetPlcBitData`
+//           - `GetPlcWordData` / `SetPlcWordData`
+//           - `GetPanelData` / `SetPanelData` 等
+//       * 提供字符串与 PLC Word 之间的转换工具（`AscToString` / `StringToAsc`、
+//         `FillSpace` / `TrimSpace` 等）
+//
+//   - 典型使用：
+//       * 上层类（`CPlcThread` 等）通过 `MNetH` 按照 `MNetHData.h` 中定义的
+//         地址宏来读写机台的各种状态位、命令位和生产数据字。
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #if !defined(AFX_MNETH_H__50FAA8A4_1B84_45A6_88C5_D84DFE668D13__INCLUDED_)
@@ -154,7 +174,7 @@ public:
 //>> 130717 kmh
 
 	//long	ReadLBEx(unsigned short nAddr, unsigned short nPoints, unsigned short *nRBuf, unsigned short nBufSize);
-	// bit ������ �ϴ� pass.
+	// bit ������ �ϴ� pass.
 	//long	ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, short *pnRBuf, long nBufSize);
 	long	ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, unsigned short *pnRBuf, long nBufSize); //151117 JSLee short -> unsigned short
 	long	ReadZREx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, unsigned short *pnRBuf, long nBufSize); //<< 20160824 kang
@@ -167,12 +187,12 @@ public:
 	long	WriteLB(unsigned short nAddr, unsigned short nPoints, unsigned short *nRBuf, unsigned short nBufSize);
 	long	WriteLW(unsigned short nAddr, unsigned short nPoints, unsigned short *nRBuf, unsigned short nBufSize);
 	long	TrayWriteLW(unsigned short nAddr,unsigned short nPoints,unsigned short *nRBuf,unsigned short nBufSize); //130704 kmh
-			// traywritelw �ʿ� ���� ���� ���� �� ����.
+			// traywritelw �ʿ� ���� ���� ���� �� ����.
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Write Function 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	long	WriteLBEx(unsigned short nAddr, unsigned short nPoints, unsigned short *nRBuf, unsigned short nBufSize);
-	// bit ������ �ϴ� pass.
+	// bit ������ �ϴ� pass.
 	//130717 kmh
 	//long	WriteLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, short *nRBuf, long nBufSize);
 	long	WriteLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, unsigned short *nRBuf, long nBufSize); //151117 JSLee short -> unsigned short
@@ -188,7 +208,7 @@ public:
 	void SetWordResultOffSet(int type, int addressOffset, void *result);
 	void GetWordResultOffSet(int type, int addressOffset, void *result);
 
-	//<< ������  (Vision, Line Scan , Viewing Angle , Align)
+	//<< ������  (Vision, Line Scan , Viewing Angle , Align)
 	BOOL GetPlcBitData(int type, int addr);
 	void SetPlcBitData(int type, int addr, BOOL bOn);
 
@@ -218,14 +238,14 @@ public:
 
 	long GetDfsData(int type, DfsData* pDfsData);
 	
-	//>> ������
+	//>> ������
 
 	long GetDataStatus(int type, void *result);
 	long ULDGetDataStatus(int type, void *result);
 
 	void SetAlignResult(int type, AlignResult* pAlignResult);
 	//>
-	//// psh 200630 ��Ʈ����
+	//// psh 200630 ��Ʈ����
 	void SetTrayPanelAlignResult(int type, TrayPanelAlignResult* pAlignResult);
 	void SetTrayPanelAlignResult_UL(int type, TrayPanelAlignResult_UL* pAlignResult);
 	//<<

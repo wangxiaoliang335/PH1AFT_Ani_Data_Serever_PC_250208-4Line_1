@@ -10,6 +10,40 @@
 #include "ProfileDataIF.h" //151208 JSLee
 #include "Ani_Data_Serever_PC.h"
 
+////////////////////////////////////////////////////////////////////////////////
+// MNetH（Mitsubishi Net Handler，PLC 通讯驱动，总体说明）
+//
+// 1) 角色
+//    - 封装与三菱 PLC 的底层通讯（XNet / MC Protocol），对上层提供统一接口：
+//        • 批量读写 Word/Bit（Device Read/Write）
+//        • 按工程自定义的「逻辑地址枚举」读写（如 eWordType_AZoneTouchResult, eBitType_* 等）
+//        • 连接管理 / 超时 / 重试 / 配置读取（INI）
+//
+// 2) 与上层业务的关系
+//    - 上层模块（TP/PG/OPV/Flow/PLC 线程等）**不直接关心 PLC 物理地址**，而是调用本类的封装函数：
+//        • `SetPlcBitData(eBitType_..., panelOffset, TRUE/FALSE)`
+//        • `SetWordResultOffSet(eWordType_..., panelOffset, &value)`
+//        • `GetDfsData(eWordType_DFSValue1 + iNum, &DfsData)` / `SetDfsData(...)` 等
+//    - 上层所有关于「Zone/Panel/Stage」的偏移换算，最终都会通过这里落到具体的 PLC D 区 / M 区地址。
+//
+// 3) 文件中重点可以给非开发工程师看的部分
+//    - 地址映射/枚举表：
+//        • 在对应的头文件 `MNetH.h` / 地址定义文件中，可以看到 AOI/TP/OPV/Gamma/ULD 各种 Word/Bit 起始地址
+//        • 本 CPP 文件中的大量工具函数（HexToDec/DecToHex/HexToBin 等）主要用于协议转换，日常排查可略过
+//    - 典型调用链举例：
+//        • TP 检测完成：`CTpManager::OnDataReceived` → `MNetH::SetWordResultOffSet(eWordType_AZoneTouchResult+Zone, Panel, ...)`
+//        • Flow 检测 Panel 完成：`FlowThread` → `MNetH::SetDfsData(eWordType_DFSValue1 + Stage, &DfsData)`
+//        • PLC 线程报工：`CPlcThread::SumDFSDataStart` → `MNetH::GetDfsData(...)`
+//
+// 4) 排查 PLC 地址问题时的建议步骤
+//    - 在代码中搜索 `eWordType_XXX` / `eBitType_XXX` 查看：
+//        • 在哪写入（对应哪个 Manager / 线程）
+//        • 在哪读取（Flow/DFS/其他）
+//    - 再在 MNetH 中查找对应的实现函数，看是否有：
+//        • 地址基址 / 偏移设置错误
+//        • 通讯读写返回错误（错误码/Log）
+////////////////////////////////////////////////////////////////////////////////
+
 #ifdef _DEBUG
 #undef THIS_FILE
 static char THIS_FILE[]=__FILE__;
@@ -293,6 +327,10 @@ long MNetH::BinToHex(CString sBin, CString& sHex)
 ========================================================================================*/
 long MNetH::Start()
 {
+	// 中文说明：
+	//   **功能：** 启动与 MELSEC PLC 的通讯，会调用 `MelsecOpen()` 打开通道并完成基础初始化，
+	//             打开成功后 `m_fActive` 置为 TRUE，其它读写函数才会返回正常结果。
+	//   **典型调用：** 在构造函数 `MNetH::MNetH` 末尾自动调用，也可在通讯异常后重新调用以重连。
 	long	lRet;
 
 	lRet = MelsecOpen();
@@ -310,6 +348,9 @@ long MNetH::Start()
 ========================================================================================*/
 long MNetH::Stop()
 {
+	// 中文说明：
+	//   **功能：** 停止与 MELSEC PLC 的通讯，会调用 `MelsecClose()` 关闭通道，结束所有读写操作。  
+	//   **注意：** 调用后 `m_fActive` 变为 FALSE，上层调用读写接口时需先检查 `IsConnected()`。
 	long	lRet;
 
 	lRet = MelsecClose();
@@ -339,6 +380,15 @@ BOOL MNetH::IsConnected()
 ========================================================================================*/
 long MNetH::ReadLB(unsigned short nAddr, unsigned short nPoints, unsigned short *pnRBuf, unsigned short nBufSize)
 {
+	// 中文说明：
+	//   **功能：** 从 PLC 的 Bit 设备区（`DevB`）按位读取数据。底层一次按字（16bit）读取，
+	//             再逐位拆分成 0/1 填入 `pnRBuf`。  
+	//   **参数：**
+	//     - `nAddr`    : PLC Bit 起始地址（设备表中的 B 地址）。
+	//     - `nPoints`  : 需要读取的位数。
+	//     - `pnRBuf`   : 调用方提供的缓冲区，保存每一位的 0/1 结果。
+	//     - `nBufSize` : `pnRBuf` 的字节大小，用于安全检查。
+	//   **上层封装：** 一般不直接调用，推荐通过 `GetPlcBitData` / `GetBitData` 这样的包装函数访问。
 	if(m_fActive == FALSE)
 		return -1;
 
@@ -441,6 +491,10 @@ long MNetH::ReadLBEx(unsigned short nAddr, unsigned short nPoints, unsigned shor
 ========================================================================================*/
 long MNetH::ReadLW(unsigned short nAddr, unsigned short nPoints, unsigned short *pnRBuf, unsigned short nBufSize)
 {
+	// 中文说明：
+	//   **功能：** 从 PLC 的 Word 设备区（`DevW`）连续读取多个字（16bit）。  
+	//   **典型用途：** 读取结构体或连续寄存器数据（Recipe、Tray 结果、对位数据等）的基础接口，
+	//                 上层通过 `GetWordData` / `GetPanelData` 等进一步封装为结构体访问。
 	if (m_fActive == FALSE) { return -1; }
 
 	unsigned short	nDev[4];
@@ -468,6 +522,10 @@ long MNetH::ReadLW(unsigned short nAddr, unsigned short nPoints, unsigned short 
 //long MNetH::ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, short *pnRBuf, long nBufSize)
 long MNetH::ReadLWEx(long lAddr, long m_lNetwork, long m_lStation, long lPoints, unsigned short *pnRBuf, long nBufSize) //151117 JSLee short -> unsigned short
 {
+	// 中文说明：
+	//   **功能：** 扩展版 Word 读取接口，支持指定网络号 `m_lNetwork` 和站号 `m_lStation`，
+	//             适用于多网段、多站号的 MELSEC 通讯场景。  
+	//   **说明：** 内部调用库函数 `mdRandREx`（参见注释中的参数说明），在底层完成随机设备读操作。
 	if (m_fActive == FALSE) { return -1; }
 	
 	long	lDev[4];
@@ -955,7 +1013,7 @@ int MNetH::ReadConfig() //151208 JSLee
 // Add Function by cha 2006/02/07 
 /*========================================================================================
 	FUNCTION : MNetH::AscToString()
-	DESCRIPT : Ascii�� String�� ��ȯ�ϴ� �Լ�.
+	DESCRIPT : Ascii�� String�� ��ȯ�ϴ� �Լ�.
 	RETURN	 : None
 	ARGUMENT : 
 	UPDATE	 : 2005/07/07, Hubri; First work!
@@ -984,7 +1042,7 @@ void MNetH::AscToString(char *pszOut, unsigned short *pnaBuf, unsigned short nPo
 // Add Function by cha 2006/02/07 
 /*========================================================================================
 	FUNCTION: StringToAsc()
-	DESCRIPT: String�� Ascii�� ��ȯ�ϴ� �Լ�.
+	DESCRIPT: String�� Ascii�� ��ȯ�ϴ� �Լ�.
 	RETURN	: void
 	ARGUMENT: 
 	UPDATE	: 2005/6/22, KyeongWhan; First work!
@@ -2311,7 +2369,7 @@ void MNetH::GetPLCAddressWord(int nLocal, int nType, long *plAddr) //151116 JSLe
 		case eWordType_TrayCheckResult3:					*plAddr = LOCAL_WORD_L2M_TRAY_CHECK_RESULT3; break;
 
 			//>
-			//// psh 200630 ��Ʈ����
+			//// psh 200630 ��Ʈ����
 		case eWordType_TrayPanelAlignResult1:				*plAddr = LOCAL_WORD_L2M_TRAY_PANEL_ALIGN_RESULT1; break;
 		case eWordType_TrayPanelAlignResult2:				*plAddr = LOCAL_WORD_L2M_TRAY_PANEL_ALIGN_RESULT2; break;
 		case eWordType_TrayPanelAlignResult3:				*plAddr = LOCAL_WORD_L2M_TRAY_PANEL_ALIGN_RESULT3; break;
@@ -2673,21 +2731,43 @@ void MNetH::GetWordResultOffSet(int type, int addressOffset, void *result)
 
 BOOL MNetH::GetPlcBitData(int type, int addr)
 {
+	// 中文说明：
+	//   **功能：** 读取当前 Local（`m_nCurLocal`）下，某一类 Bit 信号的单个地址状态。  
+	//   **参数说明：**
+	//     - `type` : Bit 类型枚举（在 `MNetHData.h` 中定义，如 `eBitType_EqpStatus`、`eBitType_StartCmd` 等），
+	//                决定实际 PLC 设备基址。
+	//     - `addr` : 在该类型中的偏移地址，一般对应协议文档中的 “Offset”。
+	//   **返回值：**
+	//     - `TRUE` : 对应 PLC Bit 为 ON。
+	//     - `FALSE`: 对应 PLC Bit 为 OFF 或通讯失败。
 	return GetBitData(m_nCurLocal, type, addr);
 }
 
 void MNetH::SetPlcBitData(int type, int addr, BOOL bOn)
 {
+	// 中文说明：
+	//   **功能：** 向当前 Local 写入一个 Bit 信号（ON/OFF），用于向 PLC 下发各种控制命令、触发标志。  
+	//   **典型用途：** 设备 Start/Stop、Alarm Reset、同缺陷报警触发等，上层不需要关心实际 PLC 地址，
+	//                 只需传入对应的 `type` 和逻辑偏移 `addr`。
 	SetBitData(m_nCurLocal, type, addr, bOn);
 }
 
 long MNetH::GetPlcWordData(int type, void *result)
 {
+	// 中文说明：
+	//   **功能：** 读取当前 Local 下某一类 Word 数据（通常是 1 Word 或小结构体）。  
+	//   **参数：**
+	//     - `type`   : Word 类型枚举（在 `MNetHData.h` 中定义，如 `eWordType_RecipeNo` 等）。
+	//     - `result` : 调用方提供的缓冲区指针，用于接收读取到的 Word 数据。
 	return GetWordData(m_nCurLocal, type, result, sizeof(unsigned short));
 }
 
 void MNetH::SetPlcWordData(int type, void *result)
 {
+	// 中文说明：
+	//   **功能：** 向 PLC 写入一类 Word 数据（通常 1 Word），如当前机种号、Tray 号、部分设定值等。  
+	//   **说明：** 对于结构体写入，建议使用下面的 `SetTrayLowerAlignResult`、`SetPanelData` 等
+	//             专用封装函数，自动按结构体大小和偏移写入多个 Word。
 	SetWordData(m_nCurLocal, type, result, sizeof(unsigned short));
 } 
 void MNetH::SetTrayLowerAlignResult(int type, TrayLowerAlignResult* pTrayLowerAlignResult)
@@ -2706,7 +2786,7 @@ void MNetH::SetAlignResult(int type, AlignResult* pAlignResult)
 }
 
 //>
-//// psh 200630 ��Ʈ����
+//// psh 200630 ��Ʈ����
 void MNetH::SetTrayPanelAlignResult(int type, TrayPanelAlignResult* pAlignResult)
 {
 	SetWordData(m_nCurLocal, type, pAlignResult, sizeof(TrayPanelAlignResult));
@@ -2731,6 +2811,10 @@ void MNetH::SetAutoFocusData(int type, AutoFocusData* pAutoFocusData)
 
 long MNetH::GetPanelData(int type, PanelData* pPanelData)
 {
+	// 中文说明：
+	//   **功能：** 从 PLC 读取一整块 `PanelData` 结构体（多 Word），包括 PanelID、Lot、CST 号等信息，
+	//             作为上位机和 PLC 之间的面板信息交换通道。  
+	//   **说明：** 结构体定义与地址布局需与 PLC 侧程序严格一致。
 	return GetWordData(m_nCurLocal, type, pPanelData, sizeof(PanelData));
 }
 
@@ -2786,6 +2870,9 @@ long MNetH::GetDfsData(int type, DfsData* pDfsData)
 
 long MNetH::SetPanelData(int type, PanelData* pPanelData)
 {
+	// 中文说明：
+	//   **功能：** 将上位机维护的 `PanelData`（如读到的条码信息）整体写入 PLC，供下位设备使用。  
+	//   **典型场景：** 上位机完成条码/卡片读取后，通过该接口把 Panel 相关信息推送到 PLC。
 	return SetWordData(m_nCurLocal, type, pPanelData, sizeof(PanelData));
 }
 

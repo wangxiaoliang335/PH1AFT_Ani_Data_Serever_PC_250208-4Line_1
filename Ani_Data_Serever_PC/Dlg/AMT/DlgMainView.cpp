@@ -8,6 +8,7 @@
 #include "Ani_Data_Serever_PC.h"
 #include "DlgMainView.h"
 #include "MainFrm.h"
+#include "DBInterface.h"
 
 // CDlgMainView
 
@@ -125,6 +126,35 @@ void CDlgMainView::SocketServerOpen()
 			break;
 		}
 	}
+
+#if _SYSTEM_AMTAFT_
+	// 作为 TCP Client 连接点灯检软件（从 sysData.ini 读取 ICW 配置）
+	CString strICWIP = theApp.m_strICWServerIP.IsEmpty() ? _T("127.0.0.1") : theApp.m_strICWServerIP;
+	CString strICWPort = theApp.m_strICWServerPort.IsEmpty() ? _T("6501") : theApp.m_strICWServerPort;
+	BOOL bICWConnect = theApp.m_ICWCommManager.ConnectToServer(strICWIP, strICWPort);
+	if (bICWConnect)
+		theApp.m_PlcLog->LOG_INFO(_T("[ICW] Connected to %s:%s"), strICWIP, strICWPort);
+	else
+		theApp.m_PlcLog->LOG_ERR(_T("[ICW] Failed to connect to %s:%s"), strICWIP, strICWPort);
+
+	// 连接 MySQL 数据库
+	CString strDBHost = theApp.m_strDBHost.IsEmpty() ? _T("127.0.0.1") : theApp.m_strDBHost;
+	CString strDBPort = theApp.m_strDBPort.IsEmpty() ? _T("3306") : theApp.m_strDBPort;
+	CString strDBName = theApp.m_strDBName.IsEmpty() ? _T("ivs_lcd") : theApp.m_strDBName;
+	CString strDBUser = theApp.m_strDBUser.IsEmpty() ? _T("root") : theApp.m_strDBUser;
+	CString strDBPass = theApp.m_strDBPassword;
+
+	// 构造连接字符串: tcp://host:port/database?user=xxx&password=xxx
+	CString strConnString;
+	strConnString.Format(_T("tcp://%s:%s/%s?user=%s&password=%s"),
+		strDBHost, strDBPort, strDBName, strDBUser, strDBPass);
+
+	BOOL bDBConnect = GetDBInterface().Connect(strConnString);
+	if (bDBConnect)
+		theApp.m_PlcLog->LOG_INFO(_T("[DB] Connected to MySQL: %s:%s/%s"), strDBHost, strDBPort, strDBName);
+	else
+		theApp.m_PlcLog->LOG_ERR(_T("[DB] Failed to connect to MySQL: %s"), GetDBInterface().GetLastError());
+#endif
 
 	
 }

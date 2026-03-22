@@ -19,7 +19,8 @@ CDlgSetRank::CDlgSetRank(CWnd* pParent /*=NULL*/)
 	m_RankCtrlList.m_bEnableDblClick = TRUE;
 
 	CRect rect;
-	m_RankCtrlList.m_cmbGrade.Create(CBS_DROPDOWN | WS_CHILD | WS_VSCROLL | WS_TABSTOP | WS_VISIBLE, rect, this, 0);
+	// NOTE: control ID must be non-zero, otherwise MFC will warn and GetDlgItem(0) will fail.
+	m_RankCtrlList.m_cmbGrade.Create(CBS_DROPDOWN | WS_CHILD | WS_VSCROLL | WS_TABSTOP | WS_VISIBLE, rect, this, IDC_RANK_GRADE_COMBO);
 
 
 }

@@ -4,10 +4,28 @@
 //
 //
 //		Version		Updated		 Author		 Note
-//      -------     -------      ------      ----
-//		1.0			2015/11/06   JSLee		 Create	
+//      -------      -------      ------      ----
+//		1.0			  2015/11/06   JSLee		   Create	
 //		   
 //
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// 中文说明：
+//   本文件定义了与三菱 PLC 通讯所用的所有地址宏（Bit / Word），包括：
+//   - PLC → PC 的状态 / 命令位（L2M：Local to Melsec）
+//   - PC → PLC 的控制位（M2L：Melsec to Local）
+//   - 生产数据、报警、机种、对位、Gamma、TP、Tray 等各子系统相关的地址。
+//
+//   - 主要作用：
+//       * 为 `MNetH` 及上层 `CPlcThread`、`CAlignThread`、`CTpThread` 等
+//         提供统一、可读性好的 PLC 地址定义，避免在代码中直接使用“魔法数”。
+//       * 各种 `LOCAL_BIT_...` / `LOCAL_WORD_...` / `REMOTE_...` 宏和注释，
+//         对应现场 PLC 通讯协议文档中的地址表。
+//
+//   - 使用方式：
+//       * 上层通过 `MNetH::GetPlcBitData` / `SetPlcBitData`、
+//         `GetPlcWordData` / `SetPlcWordData` 访问这些地址，实现对机台
+//         Start / Stop、对位触发、Gamma 测试、报警复位等控制和监控。
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #if !defined(AFX_MNETHDATA_H__BE15CBBD_BFA0_48BF_9074_C57D719A5C5B__INCLUDED_)

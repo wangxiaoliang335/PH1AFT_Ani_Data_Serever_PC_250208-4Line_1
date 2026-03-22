@@ -7,6 +7,9 @@
 #include "SocketComm.h"
 #include "TimeCheck.h"
 #include "StringSupport.h"
+#include "ICWProtocol.h"
+#include "MNetH.h"
+#include "MNetHData.h"
 
 class CVisionThread : public CSocketComm
 {
@@ -29,7 +32,7 @@ public:
 	void ParsingPcTimeRequest(int Num, CString strContents);
 	void SocketSendto(int Num, CString strContents, int iCommand);
 	void LogWrite(CString strContents, int Num);
-	BOOL VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex);
+	BOOL VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex, const CString& strUniqueID = _T(""));
 
 	void AutoFocusAxis(int Num, int iCommand, CString strContents);
 	void AutoFocusSave(int Num);
@@ -39,6 +42,10 @@ public:
 	void VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, int ResultCode, CString strPanelID, int iSendNGBuffer = 0);
 
 	void ParshingVisionData(int Num, CString strContents);
+
+	// ICW通信回调函数
+	void OnICWStart(const ICW_StartInfo& startInfo);
+	void OnICWSnapFN();
 
 	virtual void OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount);
 	virtual void OnEvent(UINT uEvent, LPVOID lpvData);
@@ -72,6 +79,12 @@ private:
 
 	BOOL m_bAutoFocusStart[MaxCamCount];
 	BOOL m_bAutoFocusStartFlag;
+
+	// ICW Start$ 消息发送标志（避免重复发送）
+	BOOL m_bICWStartSent[4];
+
+	// 发送 ICW Start$ 消息（包含所有治具信息）
+	void SendICWStartMessage();
 
 };
 

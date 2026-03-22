@@ -50,6 +50,53 @@ void COpvManager::OpvLogMessage(CString strContents)
 	theApp.m_pOpvLog->LOG_INFO(strContents);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// OPV(Operator View / AOI) 时序总览（培训用说明）：
+//
+//   OPV(VS 软件) <-> 本机(MC) <-> PLC <-> Flow 线程 <-> DFS
+//
+//   1) MC → OPV：通过 `SendOpvMessage` 下发命令：
+//        - MC_NG_PANEL             : 告知 VS 当前 Panel NG
+//        - MC_OPV_LOGIN_DONE/LOGOUT: 登录/登出响应
+//        - 模型/时间同步等指令
+//   2) OPV → MC：通过 Socket 回传命令 + 内容：
+//        - VS_ARE_YOU_THERE     : 心跳
+//        - VS_PCTIME_REQUEST    : 时间同步请求
+//        - VS_MODEL_REQUEST     : 模型请求
+//        - VS_STATE             : VS 运行状态
+//        - VS_INSPECTION_RESULT : AOI/OPV 检测结果（缺陷列表/Grade/Code 等）
+//        - VS_OPV_LOGIN_REQUEST / LOGOUT_REQUEST : 登录/登出
+//   3) 本函数 `OnDataReceived` 为 OPV 返回帧统一入口：
+//        - 处理 STX/ETX 与命令号，拆分多帧
+//        - 根据 iCommand 分发到 `OpvInspectionResult`、`OpvModelRequest`、`GetOPID` 等业务函数。
+//
+//   与 PLC / DFS 的关键关系：
+//     - VS_INSPECTION_RESULT：
+//         ├─ `OpvInspectionResult` 解析缺陷列表，填充 `m_ULD_DefectDataList2`（PanelID/FPCID/Defect_Grade/Code...）
+//         ├─ 根据 AOI/OPV 判定写 PLC：
+//         │     * eWordType_VisionResultX / eWordType_MStageAOperatorViewResult/B
+//         │     * 卸载端 DefectCode/Grade (eWordType_UnloadOK/NGDefectCodeResultX 等)
+//         │     * 完成位 eBitType_ULD_OK_DefectCodeEndX / eBitType_ULD_NG_DefectCodeEndX
+//         └─ 这些结果最终进入 DFS 区 `DfsData` 中的：
+//               m_AOIInpsect, m_OPView, DefectCode/Grade 等字段。
+//     - VS_OPV_LOGIN_REQUEST/LOGOUT_REQUEST：
+//         └─ 通过 `SetPlcBitData(eBitType_MStageA_OPVLoginOut + Num, ...)` 告知 PLC 登录状态。
+//
+//   简略 ASCII 流程（单片）：
+//       VS(OPV) → VS_INSPECTION_RESULT, <Panel,FPC,Defect...>
+//           │
+//           ▼
+//       COpvManager::OnDataReceived()
+//           └─ OpvInspectionResult()
+//                ├─ 解析缺陷列表 → m_ULD_DefectDataList2
+//                ├─ 写 PLC Vision/OPV 结果 & DefectCode/Grade Word
+//                └─ 置 END Bit (eBitType_ULD_OK/NG_DefectCodeEndX 等)
+//
+//       Flow 线程
+//           ├─ 读取 Vision/OPV 结果 + DefectCode/Grade
+//           ├─ 决定 Panel OK/NG & Rank
+//           └─ 写入 DFS 区 `DfsData`，最终经 SumDFSDataStart → DfsAddTransferFile 上传至 DFS。
+////////////////////////////////////////////////////////////////////////////////
 void COpvManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 {
 	if (theApp.m_bExitFlag == FALSE)

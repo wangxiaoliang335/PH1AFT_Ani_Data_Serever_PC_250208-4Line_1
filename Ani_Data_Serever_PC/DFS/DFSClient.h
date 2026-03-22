@@ -1,6 +1,26 @@
 // FTPClient.h: interface for the CDFSClient class.
 //
 //////////////////////////////////////////////////////////////////////
+//
+// 中文说明：
+//   `CDFSClient` 为设备与厂内 DFS/FTP 服务器之间的数据上传客户端类。
+//   主要通过 MFC 的 `CInternetSession` / `CFtpConnection` 完成文件上传、
+//   目录创建与维护，并与 `CDFSSession`、`CDFSInfo` 结构体配合生成符合
+//   CSOT 规范的 DFS 报文文件。
+//
+//   - 主要职责：
+//       * 维护与 DFS/FTP 的连接、重试、超时等（`Connect` / `Disconnect`）
+//       * 将 AOI/OPV 等检测结果文件加入上传队列并在独立线程中传输
+//         （`CreateDfsTask`、`DfsAddTransferFile`、`DfsUploadTask` 等）
+//       * 生成 DFS Index 文件、目标路径字符串等
+//       * 在 _SYSTEM_AMTAFT_ 条件下，额外支持通用 FTP 上传线程
+//
+//   - 线程与队列：
+//       * `m_DfsUploadtransferFileList` / `m_transferFileList`：上传任务队列
+//       * `RunDfsUploadThread` / `RunFtpUploadThread`：上传线程入口函数
+//       * 使用 `CCriticalSection` 保证队列在多线程环境下访问安全
+//
+//////////////////////////////////////////////////////////////////////
 
 #if _MSC_VER > 1000
 #pragma once

@@ -1858,6 +1858,10 @@
 #define IDC_LBL_DY_OPV_TOTAL_NG         2602
 #define IDC_LBL_NT_OPV_TOTAL_NG         2603
 #define IDC_RANK_GRADE_COMBO            2604
+// In-place controls (must be non-zero to avoid MFC warnings and GetDlgItem failures)
+#define IDC_LISTCTRLEX_INPLACE_EDIT     2605
+#define IDC_MYLISTCTRL_INPLACE_EDIT     2606
+#define IDC_INPLACELIST_COMBO           2607
 
 // Next default values for new objects
 // 

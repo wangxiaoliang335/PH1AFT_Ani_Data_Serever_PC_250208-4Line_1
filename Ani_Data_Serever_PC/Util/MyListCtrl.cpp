@@ -101,7 +101,8 @@ void CMyListCtrl::CreateEditBox()
 	GetSubItemRect(m_nItem, m_nSubItem, LVIR_LABEL, rect);   // 클릭한 곳에 테두리 값을 rect로 얻어옴	
 	InvalidateRect(&rect);
 	
-	m_ctrEidt.Create(ES_LEFT | ES_AUTOHSCROLL | WS_BORDER | WS_CHILD , rect, this, 0); // 얻어온 rect 값으로 에디트 박스 생성
+	// NOTE: control ID must be non-zero, otherwise MFC will warn and GetDlgItem(0) will fail.
+	m_ctrEidt.Create(ES_LEFT | ES_AUTOHSCROLL | WS_BORDER | WS_CHILD , rect, this, IDC_MYLISTCTRL_INPLACE_EDIT); // 얻어온 rect 값으로 에디트 박스 생성
 	
 	strGetText = GetItemText(m_nItem, m_nSubItem);       //아이템 얻어오기
 	m_ctrEidt.MoveWindow(rect);
@@ -260,7 +261,8 @@ CComboBox* CMyListCtrl::ShowInPlaceList(int nItem, int nCol, CStringList &lstIte
 	DWORD dwStyle = WS_BORDER | WS_CHILD | WS_VISIBLE | WS_VSCROLL
 		| CBS_DROPDOWNLIST | CBS_DISABLENOSCROLL;
 	CComboBox *pList = new CInPlaceList(nItem, nCol, &lstItems, nSel);
-	pList->Create(dwStyle, rect, this, 0);
+	// NOTE: control ID must be non-zero, otherwise MFC will warn and GetDlgItem(0) will fail.
+	pList->Create(dwStyle, rect, this, IDC_INPLACELIST_COMBO);
 	pList->SetItemHeight(-1, height);
 	pList->SetHorizontalExtent(GetColumnWidth(nCol));
 

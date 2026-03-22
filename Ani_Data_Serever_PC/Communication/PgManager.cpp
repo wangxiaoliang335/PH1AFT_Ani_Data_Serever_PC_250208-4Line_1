@@ -8,6 +8,27 @@
 #endif
 #include "PgManager.h"
 
+// ////////////////////////////////////////////////////////////////////////////
+// CPgManager
+//
+// PG Socket 通信管理类：
+//   - 作为 PG Server 端监听 PG 连接（`SocketServerOpen`）
+//   - 发送控制命令到 PG（`SendPGMessage`）
+//   - 解析 PG 的返回结果（`OnDataReceived`）
+//
+// 主要业务场景（AOI / ULD / Gamma）：
+//   - AOI 自动生产：通过 PG 做 CONTACT ON/OFF、PreGamma、GET_RECIPE 等
+//   - ULD 手动台：PG 用于手动接触/预 Gamma 等（通道 17~18）
+//   - GAMMA 机种：使用 GAMMA / PID 等命令做亮度 / 均匀性 / PID 校正
+//
+// 收到 PG 返回帧的总入口为 `OnDataReceived`，根据系统宏拆分为：
+//   - `_SYSTEM_AMTAFT_` 定义时：
+//       AOIDataReceived()  : 生产 AOI 线 PG 结果
+//       ULDDataReceived()  : 手动台 PG 结果
+//   - 否则：
+//       GammaDataReceived(): Gamma 设备 PG 结果
+// ////////////////////////////////////////////////////////////////////////////
+
 CPgManager::CPgManager()
 {
 #if _SYSTEM_AMTAFT_
@@ -43,14 +64,15 @@ void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 		for (int ii = 0; ii < iSize; ii++)
 			strPacket[ii] = responseTokens[ii];
 	
-		//Ch,Number,PREGAMMA,START,CELLID 5
-		//Ch,Number,PTRN,PatternNumber 4
-		//Ch,Number,KEY,BACK 4
-		//Ch,Number,KEY,NEXT 4
-		//Ch,Number,CONTACTOFF,CELLID 4
-		//Ch,Number,CONTACT,CELLID 4
-		//Ch,Number,TURNOFF 3
-		//Ch,Number,TURNON 3
+		// PG 原始业务文本帧格式说明（逗号分隔）：
+		//   Ch,<通道号>,PREGAMMA,START,<CELLID>           // 预 Gamma 开始
+		//   Ch,<通道号>,PTRN,<PatternNumber>             // 切换 Pattern
+		//   Ch,<通道号>,KEY,BACK                         // 按键：上一 Pattern
+		//   Ch,<通道号>,KEY,NEXT                         // 按键：下一 Pattern
+		//   Ch,<通道号>,CONTACTOFF,<CELLID>              // 接触 OFF
+		//   Ch,<通道号>,CONTACT,<CELLID>                 // 接触 ON
+		//   Ch,<通道号>,TURNOFF                          // PG 模块电源 OFF
+		//   Ch,<通道号>,TURNON                           // PG 模块电源 ON
 		if (!strPacket[1].Compare(_T("18")))
 		{
 			strPacket[1] = _T("21");
@@ -64,6 +86,9 @@ void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 		}
 	}
 
+	// 组装最终发送报文：
+	//   [STX][DEST][LEN(4位16进制)][内容(ASCII)][ETX]
+	//   - LEN 为 strAMsg 长度，16 进制 4 位宽
 	int iLen = strAMsg.GetLength();
 	int iNum = iChNum - 1;
 	strSendMsg.Format(_T("%c%c%04X%s%c"), _STX, _DEST, iLen, strAMsg, _ETX);
@@ -94,6 +119,45 @@ void CPgManager::PgLogMessage(CString strContents)
 	m_csSocketSend.Unlock();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// PG 时序总览（培训用说明）：
+//
+//   PG(Module) <-> 本机(MC) <-> PLC <-> Flow 线程 <-> DFS
+//
+//   1) MC → PG：通过 `SendPGMessage` 发送业务命令
+//      - Ch,<通道>,CONTACT,<CELLID>      // 接触 ON
+//      - Ch,<通道>,PREGAMMA,START,<ID>   // 预 Gamma
+//      - Ch,<通道>,KEY,RESET             // 接触 OFF
+//   2) PG → MC：PG 完成后回传 DONE 帧（本函数 `OnDataReceived` 为统一入口）。
+//   3) MC ：在 `OnDataReceived` 中拆 STX/ETX + 头信息，得到业务内容：
+//         "Ch,Number,DONE,CONTACT,END,GOOD/NG,..."
+//   4) AOI 线：调用 `AOIDataReceived`，
+//      - Contact / PreGamma 结果写 PLC Word：
+//          eWordType_AZoneContactOnResult / eWordType_PreGammaResultX / eWordType_PGCodeChXResult 等
+//      - 完成信号写 PLC Bit：
+//          eBitType_AZoneContactOnEnd / eBitType_PreGammaEnd 等
+//   5) Flow 线程：轮询上述 Bit/Word，汇总为 Panel 级别结果，最终生成 DFS 区结构 `DfsData`。
+//   6) DFS：`CPlcThread::SumDFSDataStart` 从 `DfsData` 读出 PG 相关字段（Contact/PreGamma/PGCode 等），
+//           通过 `CDFSClient::DfsAddTransferFile` 交给 DFS 上传线程，生成 SUM/INDEX 文件。
+//
+//   简略 ASCII 流程（单片）：
+//     MC::SendPGMessage()
+//         │
+//         ▼
+//     PG 硬件执行 → DONE 帧
+//         │
+//         ▼
+//     CPgManager::OnDataReceived()
+//         ├─ AOIDataReceived() / ULDDataReceived() / GammaDataReceived()
+//         │    ├─ 写 PG 结果到 PLC Word (Contact/PreGamma/PGCode...)
+//         │    └─ 置 END Bit (ContactOnEnd/PreGammaEnd...)
+//         └─ 更新内部结构 theApp.m_lastIndexPgVec 等
+//
+//     Flow 线程
+//         ├─ 轮询 END Bit → 读取结果 Word
+//         ├─ 生成 DFS 区 `DfsData`
+//         └─ 调用 SumDFSDataStart() → DfsAddTransferFile() → DFS FTP 上传
+////////////////////////////////////////////////////////////////////////////////
 void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 {
 	if (theApp.m_bExitFlag == FALSE)
@@ -105,12 +169,14 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 	CStringArray responseTokens;
 	CString m_strContents, m_strHeader, strParsing;
+	// PG 返回数据可能一次粘在一起，使用 ETX 分隔后逐条解析
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
 
 	theApp.m_PgSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [PG -> MC] %s"), GetNowSystemTimeMilliseconds(), strData));
 
 	if (responseTokens.GetSize() == 1)
 	{
+		// 没有找到 ETX，认为报文不完整
 		PgLogMessage(_T("ETX Message No !!!!"));
 		return;
 	}
@@ -118,6 +184,7 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	for (int ii = 0; ii < responseTokens.GetSize() - 1; ii++)
 	{
 		strParsing = responseTokens[ii];
+		// 检查帧头 STX
 		m_strHeader.Format(_T("%x"), strParsing.GetAt(0));
 		UINT iHeader = (UINT)_ttoi(m_strHeader);
 		if (iHeader != _STX || strParsing.GetAt(0) == ',')
@@ -126,6 +193,9 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			continue;
 		}
 
+		// 去掉 STX、DEST、长度字段，只保留业务部分：
+		//   [STX][DEST][LEN][Ch,Number,XXXX,....,RESULT]
+		// 查找第一个逗号位置，减去前面 2Byte 头，截取后面的业务字符串
 		int iFind = strParsing.Find(',') - 2;
 		m_strContents = strParsing.Mid(iFind, strParsing.GetLength());
 
@@ -146,6 +216,18 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 #if _SYSTEM_AMTAFT_
 void CPgManager::AOIDataReceived(CString strContents)
 {
+	// AOI 自动线 PG 返回格式（典型）：
+	//   Ch,<通道号>,DONE,CONTACT,END,<GOOD/NG>[,VBAT,VDDI,VCI,PGCODE]
+	//   Ch,<通道号>,DONE,KEY,RESET,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,PREGAMMA,END,<TEST名>,<GOOD/NG>
+	//   Ch,<通道号>,DONE,CONTACTOFF,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,GET_RECIPE,END,<RECIPENAME>
+	// 其中：
+	//   - responseTokens[1] : 实际 PG 通道号（1~16）
+	//   - responseTokens[3] : 命令类型（CONTACT / KEY / PREGAMMA / CONTACTOFF / GET_RECIPE）
+	//   - responseTokens[4] : 子命令或状态（END / RESET / NEXT / BACK）
+	//   - responseTokens[5+] : 结果 GOOD/NG、PanelID、PG Code 等
+	// 本函数负责将结果写入 PLC，并更新 `theApp.m_lastIndexPgVec` / Rank / DFS 等信息。
 	CStringArray responseTokens;
 	int iPanelNum, iIndexNum, iPanelCheal, iChNum, iPgOrderNum = 0;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
@@ -471,6 +553,17 @@ void CPgManager::AOIDataReceived(CString strContents)
 
 void CPgManager::ULDDataReceived(CString strContents)
 {
+	// ULD 手动台 PG 返回格式（通道一般为 17~18）：
+	//   Ch,<通道号>,DONE,CONTACT,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,KEY,RESET/ NEXT/ BACK,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,PREGAMMA,END,<TEST名>,<GOOD/NG>
+	//   Ch,<通道号>,DONE,CONTACTOFF,END,<GOOD/NG>
+	// 其中：
+	//   - responseTokens[1] : ULD PG 通道号（17/18），内部会换算回 1/2 面板索引
+	//   - responseTokens[3] : 命令类型（CONTACT / KEY / PREGAMMA / CONTACTOFF）
+	//   - responseTokens[4] : 子命令（RESET/NEXT/BACK/END）
+	//   - responseTokens[5] : 结果 GOOD/NG
+	// 本函数根据返回结果刷新 PLC 位、手动台队列 `m_VecManualStage` 以及重新发送 PG 命令。
 	CStringArray responseTokens;
 	int iPanelCheal, iChNum = 0, iPgOrderNum = 0;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
@@ -673,6 +766,19 @@ void CPgManager::ULDDataReceived(CString strContents)
 #else
 void CPgManager::GammaDataReceived(CString strContents)
 {
+	// Gamma 机种 PG 返回格式（典型）：
+	//   Ch,<通道号>,DONE,CONTACT,END,<GOOD/NG>[,VBAT,VDDI,VCI,PGCODE]
+	//   Ch,<通道号>,DONE,GAMMA,END,<GOOD/NG>,<Code>,<Grade>
+	//   Ch,<通道号>,DONE,KEY,RESET/NEXT/BACK,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,CONTACTOFF,END,<GOOD/NG>
+	//   Ch,<通道号>,DONE,PID,END,<GOOD/NG>
+	// 其中：
+	//   - responseTokens[1] : PG 通道号（1~24）
+	//   - responseTokens[3] : 命令类型（CONTACT / GAMMA / KEY / CONTACTOFF / PID）
+	//   - responseTokens[4] : 子命令或状态（END / RESET / NEXT / BACK）
+	//   - responseTokens[5] : 结果 GOOD/NG
+	//   - responseTokens[6]/[7] : Gamma NG 时的 Code/Grade
+	// 本函数会根据 Stage/Panel 索引，把结果写入到对应 PLC Word/Bit，并保存 DFS/缺陷信息。
 	CStringArray responseTokens;
 	int iPanelNum, iChNum, iStageNum;
 	int iPgOrderNum = 0;

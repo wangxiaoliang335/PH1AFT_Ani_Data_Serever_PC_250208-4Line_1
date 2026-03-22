@@ -1,4 +1,4 @@
-
+﻿
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -6,6 +6,50 @@
 #include "DlgMainView.h"
 #include "VisionThread.h"
 #include "DFSInfo.h"
+#include "DBInterface.h"
+#include "DataModels.h"
+#include "AniUtil.h"
+
+// 简化版 DFS 时间转换函数（从 PlcThread 移植）
+CString DFSDataTimeParser(USHORT Time1, USHORT Time2, USHORT Time3)
+{
+	CString strResult;
+	char charTemp1[10], charTemp2[10], charTemp3[10];
+	CString strTemp1, strTemp2, strTemp3;
+	CString strTime1, strTime2, strTime3;
+
+	_itoa(Time1, charTemp1, 16);
+	_itoa(Time2, charTemp2, 16);
+	_itoa(Time3, charTemp3, 16);
+
+	MultiByteToWideChar(CP_UTF8, 0, charTemp1, 10, strTemp1.GetBuffer(10 + 1), 10 + 1);
+	strTemp1.ReleaseBuffer();
+	MultiByteToWideChar(CP_UTF8, 0, charTemp2, 10, strTemp2.GetBuffer(10 + 1), 10 + 1);
+	strTemp2.ReleaseBuffer();
+	MultiByteToWideChar(CP_UTF8, 0, charTemp3, 10, strTemp3.GetBuffer(10 + 1), 10 + 1);
+	strTemp3.ReleaseBuffer();
+
+	strTime1.Format(_T("%s"), strTemp1);
+	strTime2.Format(_T("%s"), strTemp2);
+	strTime3.Format(_T("%s"), strTemp3);
+
+	strResult.Format(_T("%s-%s-%s %s:%s:%s"), 
+		strTime1.Mid(0, 2), strTime1.Mid(2, 2), strTime2.Mid(0, 2),
+		strTime2.Mid(2, 2), strTime3.Mid(0, 2), strTime3.Mid(2, 2));
+
+	return strResult;
+}
+
+CString DFSDataTactTimeParser(USHORT Time1, USHORT Time2, USHORT Time3, USHORT Time4)
+{
+	CString strResult;
+	int iStartTime = (Time1 << 16) + Time2;
+	int iEndTime = (Time3 << 16) + Time4;
+	int iResult = iEndTime - iStartTime;
+	if (iResult < 0) iResult = 0;
+	strResult.Format(_T("%d"), iResult);
+	return strResult;
+}
 
 
 CVisionThread::CVisionThread()
@@ -17,6 +61,18 @@ CVisionThread::CVisionThread()
 	m_lastRequest.resize(2);
 	theApp.m_bVisionDeleteFlag = TRUE;
 	theApp.m_lastInspResultVec.resize(8);
+
+	// 初始化 ICW Start$ 发送标志
+	for (int i = 0; i < 4; i++)
+		m_bICWStartSent[i] = FALSE;
+
+	// ??? ICW ??????
+	theApp.m_ICWCommManager.SetStartCallback([this](const ICW_StartInfo& info) {
+		OnICWStart(info);
+	});
+	theApp.m_ICWCommManager.SetSnapFNCallback([this]() {
+		OnICWSnapFN();
+	});
 }
 
 CVisionThread::~CVisionThread()
@@ -54,8 +110,8 @@ void CVisionThread::ThreadRun()
 					m_bStartVision[jj] = FALSE;
 			}
 
-			//TEST Model �� (TRUE) Model ���浵 �Ⱥ��� �׳� ��� ���� �մϴ�.
-			//TEST Model �� (FALSE) Model ���� �� ���� ��� check 
+			//TEST Model ?? (TRUE) Model ???? ????? ??? ??? ???? ????.
+			//TEST Model ?? (FALSE) Model ???? ?? ???? ??? check 
 			if (theApp.m_AOIPassMode == FALSE)
 			{
 				if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelVision1 == TRUE || theApp.m_ChangeModelVision2 == TRUE)
@@ -215,7 +271,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	GetSockName(addrin);
 	int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
 
-	//����� ���� �Ǿ� ���ð�쿡�� for ������ ETX �������� �Ľ��ؼ� ���� �����ü� �ֵ��� ����
+	//????? ???? ??? ?????????? for ?????? ETX ???????? ?????? ???? ??????? ????? ????
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -372,7 +428,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 void CVisionThread::VisionFirstCheckMethod(int Num)
 {
 	BOOL bModelCreate, bModelChange;
-	//ó�� �����ִ°��� IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), �𵨸�(MC_MODEL)
+	//??? ??????????? IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ???(MC_MODEL)
 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
 	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
 	Delay(200, TRUE);
@@ -454,6 +510,63 @@ void CVisionThread::ParsingPcTimeRequest(int Num, CString strContents)
 	LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_PCTIME], sendMsg), Num);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// 发送 ICW Start$ 消息给点灯检系统
+// 格式: Start$ABCD$WXYZ@
+// - 前一组(ABCD) = 当前检测哪几个治具，有产品用序号(01~04)，无产品用00
+// - 后一组(WXYZ) = 最多可检测哪几个治具(固定01020304)
+// 例: Start$01020304$01020304@ (检测4片)
+//     Start$01020000$01020304@ (只检测01和02)
+///////////////////////////////////////////////////////////////////////////////
+void CVisionThread::SendICWStartMessage()
+{
+#if _SYSTEM_AMTAFT_
+	// 最多4个治具，固定最大数量
+	const int MAX_JIG = 4;
+	CString strCurrentJigs = _T("");   // 当前检测的治具
+	CString strMaxJigs = _T("");        // 最大治具数量
+
+	// 读取当前4个槽位的Panel数据，判断哪些槽位有产品
+	for (int i = 0; i < MAX_JIG; i++)
+	{
+		PanelData pPanelData;
+		FpcIDData pFpcData;
+		CString strPanel = _T(""), strFpcID = _T("");
+
+		theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + i, &pPanelData);
+		strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
+
+		theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + i, &pFpcData);
+		strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
+
+		if (strPanel.IsEmpty())
+			strPanel = strFpcID;
+
+		// 有产品用治具号(01~04)，无产品用00
+		if (!strPanel.IsEmpty())
+		{
+			strCurrentJigs += CStringSupport::FormatString(_T("%02d"), i + 1);
+		}
+		else
+		{
+			strCurrentJigs += _T("00");
+		}
+
+		// 最大治具固定为 01,02,03,04
+		strMaxJigs += CStringSupport::FormatString(_T("%02d"), i + 1);
+	}
+
+	// 组装 Start$ 消息
+	CString strStartMsg;
+	strStartMsg.Format(_T("Start$%s$%s@"), strCurrentJigs, strMaxJigs);
+
+	// 发送 ICW Start$ 消息
+	theApp.m_ICWCommManager.SendMessage(strStartMsg);
+
+	LogWrite(CStringSupport::FormatString(_T("[ICW] Send Start$: %s"), strStartMsg), 0);
+#endif
+}
+
 void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 {
 	if (theApp.m_CurrentIndexZone < 0)
@@ -494,9 +607,28 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 	indexPanelNum = theApp.m_indexList[iCurIndex].m_indexNum + panelNum;
 	strProcessID = theApp.GetProcessID(strPanel);
 
+	// 发送开始检测前更新 ivs_lcd_idmap，供检测软件使用；UniqueID 保证不重复
+	CString strMarkID;
+	strMarkID.Format(_T("%02d"), panelNum + 1);   // 治具号 01~04
+	CString strUniqueID = GetDBInterface().GenerateUniqueIDForJig(panelNum);
+	if (GetDBInterface().IsConnected())
+	{
+		if (!GetDBInterface().UpsertIDMapBeforeStart(strMarkID, panelNum, strUniqueID, strPanel, strMarkID))
+			LogWrite(CStringSupport::FormatString(_T("Panel %d UpsertIDMap failed: %s"), panelNum, GetDBInterface().GetLastError()), Num);
+	}
+
+#if _SYSTEM_AMTAFT_
+	// 发送 ICW Start$ 消息给点灯检系统（仅在第一个治具时发送一次）
+	if (panelNum == 0 && !m_bICWStartSent[0])
+	{
+		SendICWStartMessage();
+		m_bICWStartSent[0] = TRUE;
+	}
+#endif
+
 	LogWrite(CStringSupport::FormatString(_T("%s Panel %d [%s][%s] Vision Grab Start"), PG_IndexName[iCurIndex], Num, strPanel, strFpcID), Num);
 
-	BOOL bFlag = VisionVecAdd(strPanel, strFpcID, panelNum, indexPanelNum, Num, iCurIndex);
+	BOOL bFlag = VisionVecAdd(strPanel, strFpcID, panelNum, indexPanelNum, Num, iCurIndex, strUniqueID);
 	if (bFlag)
 	{
 		sendMsg.Format(_T("%d,%s,%d,%s,%s"), MC_INSPECTION_START, strPanel, indexPanelNum, strProcessID, strFpcID);
@@ -590,6 +722,91 @@ void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
 					InspResult.m_iResultValue,
 					InspResult.m_cellId, iSendNGBuffer);
 
+#if 0  // DFS上传已移至PlcThread::DFSDataStart，由PLC DFSStart触发
+				// 从 PLC 读取所有工序数据 + 从 MySQL 读取 AOI 结果，合并后上传 DFS (FTP)
+				if (theApp.m_pFTP != NULL)
+				{
+					// 1. 从 PLC 读取其他工序数据（Contact、PreGamma、TP、Lumitop、OPView 等）
+					DfsData dfsDataPlc;
+					int iNum = InspResult.m_iPanelNum;  // 槽位号 0-3
+					BOOL bIsOK = (InspResult.m_iResultValue == m_codeOk);  // TRUE=OK, FALSE=NG
+
+#if _SYSTEM_AMTAFT_
+					if (bIsOK)
+						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadOKDFSValue1 + iNum, &dfsDataPlc);
+					else
+						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadNGDFSValue1 + iNum, &dfsDataPlc);
+#else
+					if (bIsOK)
+						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_DFSValue1 + iNum, &dfsDataPlc);
+					else
+						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_GammaNGDFSValue1 + iNum, &dfsDataPlc);
+#endif
+
+					// 2. 转换为 DfsDataValue 格式
+					DfsDataValue dfsData;
+					dfsData.m_FpcID = CStringSupport::ToWString(dfsDataPlc.m_FpcID, sizeof(dfsDataPlc.m_FpcID));
+					dfsData.m_PanelID = CStringSupport::ToWString(dfsDataPlc.m_PanelID, sizeof(dfsDataPlc.m_PanelID));
+					dfsData.m_StartTime = DFSDataTimeParser(dfsDataPlc.m_StartTime1, dfsDataPlc.m_StartTime2, dfsDataPlc.m_StartTime3);
+					dfsData.m_LoadHandlerTime = DFSDataTimeParser(dfsDataPlc.m_LoadHandlerTime1, dfsDataPlc.m_LoadHandlerTime2, dfsDataPlc.m_LoadHandlerTime3);
+					dfsData.m_UnloadHandlerTime = DFSDataTimeParser(dfsDataPlc.m_UnLoadHandlerTime1, dfsDataPlc.m_UnLoadHandlerTime2, dfsDataPlc.m_UnLoadHandlerTime3);
+					dfsData.m_TpTime = Int2String(dfsDataPlc.m_TPTime);
+					dfsData.m_PreGammaTime = Int2String(dfsDataPlc.m_PreGammaTime);
+					dfsData.m_EndTime = DFSDataTimeParser(dfsDataPlc.m_EndTime1, dfsDataPlc.m_EndTime2, dfsDataPlc.m_EndTime3);
+					dfsData.m_TactTime = DFSDataTactTimeParser(dfsDataPlc.m_StartTime2, dfsDataPlc.m_StartTime3, dfsDataPlc.m_EndTime2, dfsDataPlc.m_EndTime3);
+					dfsData.m_PreGammaContactStatus = Int2String(dfsDataPlc.m_PreGammaContactStatus);
+					dfsData.m_ModelID = CStringSupport::ToWString(dfsDataPlc.m_ModelID, sizeof(dfsDataPlc.m_ModelID));
+					dfsData.m_IndexNum = Int2String(dfsDataPlc.m_IndexNum);
+					dfsData.m_ChNum = Int2String(dfsDataPlc.m_ChNum);
+					dfsData.m_TpResult = Int2String(dfsDataPlc.m_TpResult);
+					dfsData.m_Contact = dfsDataPlc.m_Contact == 1 ? _T("OK") : dfsDataPlc.m_Contact == 2 ? _T("NG") : _T("BYPASS");
+					dfsData.m_PreGamma = dfsDataPlc.m_PreGamma == 1 ? _T("OK") : dfsDataPlc.m_PreGamma == 2 ? _T("NG") : _T("BYPASS");
+					dfsData.m_TpResult2 = dfsDataPlc.m_TpResult2 == 1 ? _T("OK") : dfsDataPlc.m_TpResult2 == 2 ? _T("NG") : _T("BYPASS");
+					dfsData.m_Lumitop = dfsDataPlc.m_Lumitop == 1 ? _T("OK") : dfsDataPlc.m_Lumitop == 2 ? _T("NG") : _T("BYPASS");
+					dfsData.m_ContactCount = Int2String(dfsDataPlc.m_ContactCount);
+					dfsData.m_LoadeHandlerNUM = Int2String(dfsDataPlc.m_LoadeHandlerNUM);
+					dfsData.m_UnLoadeHandlerNUM = Int2String(dfsDataPlc.m_UnLoadeHandlerNUM);
+					dfsData.m_opViewResult = dfsDataPlc.m_OPView == 1 ? _T("OK") : dfsDataPlc.m_OPView == 2 ? _T("NG") : _T("BYPASS");
+					dfsData.m_TypeNum = Machine_AOI;  // 点灯检是 AOI 设备
+					dfsData.m_StageNum = iNum + 1;
+
+					// 3. 从 MySQL 读取 AOI 结果，覆盖 m_AOIInpsect
+					if (!InspResult.m_UniqueID.IsEmpty())
+					{
+						CInspectionResult aoiResult;
+						if (GetDBInterface().QueryByUniqueID(InspResult.m_UniqueID, aoiResult))
+						{
+							// 根据 MySQL 的 AOIResult 设置 AOI 工序结果
+							if (aoiResult.AOIResult.CompareNoCase(_T("OK")) == 0)
+								dfsData.m_AOIInpsect = _T("OK");
+							else
+								dfsData.m_AOIInpsect = _T("NG");  // 其他（NG/BrightDot等）都按 NG 处理
+
+							LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from MySQL: %s"), 
+								strPanelID, aoiResult.AOIResult), Num);
+						}
+						else
+						{
+							// MySQL 查询失败时，用本地结果
+							dfsData.m_AOIInpsect = (InspResult.m_iResultValue == m_codeOk) ? _T("OK") : _T("NG");
+							LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from Local: %s, MySQL Error: %s"), 
+								strPanelID, dfsData.m_AOIInpsect, GetDBInterface().GetLastError()), Num);
+						}
+					}
+					else
+					{
+						// 没有 UniqueID 时，用本地结果
+						dfsData.m_AOIInpsect = (InspResult.m_iResultValue == m_codeOk) ? _T("OK") : _T("NG");
+					}
+
+					// 4. 上传到 FTP
+					theApp.m_pFTP->AddTransferFile(dfsData);
+					LogWrite(CStringSupport::FormatString(_T("Panel [%s] DFS Upload Success (Contact:%s, PreGamma:%s, AOI:%s, TP:%s, Lumitop:%s, OPView:%s)"), 
+						strPanelID, dfsData.m_Contact, dfsData.m_PreGamma, dfsData.m_AOIInpsect, 
+						dfsData.m_TpResult, dfsData.m_Lumitop, dfsData.m_opViewResult), Num);
+				}
+#endif
+
 				InspResult.time_check.StopTimer();
 				InspResult.m_bResult = TRUE;
 			}
@@ -659,9 +876,9 @@ BOOL CVisionThread::getConectCheck()
 	GetSockName(addrin);
 	LONG  uAddr = addrin.GetIPAddr();
 	if (uAddr == 0)
-		return FALSE;	//���Ӿ���
+		return FALSE;	//???????
 	else
-		return TRUE;	//������
+		return TRUE;	//??????
 }
 
 void CVisionThread::RemoveClient()
@@ -772,10 +989,19 @@ void CVisionThread::VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, i
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + iPanelNum, OffSet_0, TRUE);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + iPanelNum, OffSet_0, TRUE);
 
+	// ?��???��? ICW (FN$...@)
+	ICW_FinishInfo finishInfo;
+	finishInfo.Action = _T("Finish");
+	ICW_ProductResult prodResult;
+	prodResult.Position = iPanelNum + 1;  // 1-based
+	prodResult.Result = (ResultCode == m_codeOk) ? ICW_RESULT_OK : ICW_RESULT_NG;
+	finishInfo.ProducResults.push_back(prodResult);
+	theApp.m_ICWCommManager.SendFinishInfoAuto(finishInfo);
+
 	LogWrite(CStringSupport::FormatString(_T("Panel %d %s Vision Result %s"), Num, strPanelID, ResultMsg), Num);
 }
 
-BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex)
+BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex, const CString& strUniqueID)
 {
 	BOOL flag = TRUE;
 	InspResult panelData;
@@ -793,6 +1019,7 @@ BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelN
 	panelData.m_iPCNum = iPCNo;
 	panelData.m_cellId = strPanel;
 	panelData.m_FpcID = strFpcID;
+	panelData.m_UniqueID = strUniqueID;
 	panelData.m_iCurIndex = iCurIndex;
 
 	if (panelData.m_cellId.IsEmpty())
@@ -866,8 +1093,51 @@ void CVisionThread::ParshingVisionData(int Num, CString strContents)
 	theApp.m_strOpvImageWidth = responseTokens[1];
 	theApp.m_strOpvImageHeight = responseTokens[2];
 
-	LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] ModelName[%s], ImageWidth[%s], ImageHeight[%s]"), 
+	LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] ModelName[%s], ImageWidth[%s], ImageHeight[%s]"),
 		Num, strVisionModelName, theApp.m_strOpvImageWidth, theApp.m_strOpvImageHeight), Num);
+}
+
+// ICW????????????
+// ICW ??? Start$...@ ?? {"Action":"Start",...} ????
+void CVisionThread::OnICWStart(const ICW_StartInfo& startInfo)
+{
+	LogWrite(CStringSupport::FormatString(_T("[ICW] Received Start - JigNumber: %d, Products: %d"),
+		startInfo.JigNumber, startInfo.Products.size()), 0);
+
+	// ?????????????????????????????
+	// JigNumber: 1=Panel1, 2=Panel2, 3=Panel3, 4=Panel4
+	for (const auto& product : startInfo.Products)
+	{
+		int iPanelNum = product.Position - 1;  // ??? 0-based ????
+		if (iPanelNum >= 0 && iPanelNum < 4)
+		{
+			int iPcNum = iPanelNum <= 1 ? PC1 : PC2;
+			VisionInspectionMethod(iPcNum, iPanelNum);
+		}
+	}
+}
+
+// ICW ??? SnapFN@ ??????????????
+void CVisionThread::OnICWSnapFN()
+{
+	LogWrite(_T("[ICW] Received SnapFN@ - Image Grab Complete"), 0);
+
+#if _SYSTEM_AMTAFT_
+	// 重置 ICW Start$ 发送标志，允许下次检测时重新发送
+	for (int i = 0; i < 4; i++)
+		m_bICWStartSent[i] = FALSE;
+#endif
+
+	// ????????????????????? GrabEnd ??
+	for (auto& InspResult : theApp.m_lastInspResultVec)
+	{
+		if (InspResult.m_bInspStart == TRUE && InspResult.m_bGrabEnd == FALSE)
+		{
+			LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab End (from ICW)"), InspResult.m_cellId), InspResult.m_iPCNum);
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
+			InspResult.m_bGrabEnd = TRUE;
+		}
+	}
 }
 
 #endif

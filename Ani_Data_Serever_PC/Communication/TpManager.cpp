@@ -61,6 +61,50 @@ void CTpManager::TpLogMessage(CString strContents)
 	m_csTpData.Unlock();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// TP(触摸) 时序总览（培训用说明）：
+//
+//   TP(Panel) <-> 本机(MC) <-> PLC <-> Flow 线程 <-> DFS
+//
+//   1) MC → TP：`SendTPMessage` 下发命令：
+//        - `#CK*Ch#`        : 通信检查
+//        - `#JZ*Ch*Code#`   : 下发 ProductID
+//        - `#PD*Ch*Panel#`  : 下发 PanelID
+//        - `#ST*Ch#`        : 开始 TP 检测
+//        - `#RE*Ch#`        : 请求 TP Code
+//   2) TP → MC：完成检测后回传：
+//        - `#RT*Ch*OK# / #RT*Ch*NG#`   → 触摸结果
+//        - `#TP*Ch*XXXX...#`          → TP Code
+//   3) 本函数 `OnDataReceived` 为 TP 所有返回帧的统一入口：
+//        - 拆分可能粘连的多帧（以 `#` 为首尾）
+//        - 解析通道，对应 AOI/ULD（Zone/Panel）逻辑
+//        - 根据命令类型更新内部结构和 PLC 地址。
+//
+//   PLC & DFS 关联：
+//     - AOI：
+//         OK  : eWordType_AZoneTouchResult + Zone   写 OK，eBitType_AZoneTouchInspectionEnd + Zone 置位
+//         NG  : 同上写 NG 并记录 Rank → 供 DFS 中 `DfsData.m_TpResult` / `m_TpResult2` 使用
+//         TP Code：写入 eWordType_TPCodeCh1Result + Zone，对应 DFS 中 Code 校验信息。
+//     - ULD：
+//         结果写入 eWordType_MStageATouchResult/B，完成位 eBitType_MStageATouchEnd 等。
+//
+//   简略 ASCII 流程（单片）：
+//       CTpManager::SendTPMessage(#ST...)
+//           │
+//           ▼
+//       TP 检测 → #RT*Ch*OK/NG#
+//           │
+//           ▼
+//       CTpManager::OnDataReceived()
+//           ├─ 计算 Zone/Panel/Stage
+//           ├─ 写 PLC Word (TouchResult) & Bit (TouchInspectionEnd)
+//           └─ 记录 Rank / 通知 OPV（NG 时向 OPV 下发 MC_NG_PANEL）
+//
+//       Flow 线程
+//           ├─ 轮询 eBitType_AZoneTouchInspectionEnd...
+//           ├─ 读取 eWordType_AZoneTouchResult...
+//           └─ 将 TP 结果写入 DFS 区 `DfsData`，最终由 SumDFSDataStart → DfsAddTransferFile 上传。
+////////////////////////////////////////////////////////////////////////////////
 void CTpManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 {
 	m_strDummyContents.Format(_T(""));

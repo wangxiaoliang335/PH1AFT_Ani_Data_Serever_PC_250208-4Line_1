@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="_SYSTEM_AMTAFT_|Win32">
@@ -135,16 +135,16 @@
     <LibraryPath>F:\syt11\Gvo_Align_PC\Library\OpenCV\lib;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'">
-    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <IncludePath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\include;D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64\vs14;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
     <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'">
-    <IncludePath>D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <IncludePath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64-debug\include;D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64-debug\lib64\debug\vs14;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
     <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
   </PropertyGroup>
@@ -236,6 +236,12 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\mysqlcppconn-10-vs14.dll" "$(OutDir)"
+copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libcrypto-3-x64.dll" "$(OutDir)"
+copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libssl-3-x64.dll" "$(OutDir)"</Command>
+      <Message>Copy MySQL Connector C++ DLLs to output directory</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_INDEX_|x64'">
     <ClCompile>
@@ -243,14 +249,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_INDEX_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\include;D:\ZSDK\MIL_64\Include;D:\ZSDK\OpenCV2.4.9\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;D:\ZSDK\OpenCV2.4.9\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64\vs14;E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64;.\Melsec;D:\ZSDK\OpenCV\bin;D:\ZSDK\OpenCV\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>mysqlcppconn.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -268,14 +274,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SYSTEM_AMTAFT_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Comm;.\Communication;.\Dlg\AMT;.\Thread\AMT;.\Thread;.\View;.\Util;.\Melsec;.\Main;.\DFS;.\Dlg;.\;D:\ZSDK\MIL_64\Include;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\include\opencv;D:\ZSDK\StGigE SDK\Includes;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>.\Melsec;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\bin;E:\附件1.CSOT_PH1_AFT151相机改造提供资料\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64\vs14;E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64;.\Melsec;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\bin;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>mysqlcppconn.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Midl>
@@ -287,6 +293,11 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+      <Message>Copy MySQL Connector C++ DLLs to output directory</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_UNLOADER_|x64'">
     <ClCompile>
@@ -361,6 +372,8 @@
     <ClInclude Include="Communication\PgManager.h" />
     <ClInclude Include="Communication\SerialCom.h" />
     <ClInclude Include="Communication\SerialRS485.h" />
+    <ClInclude Include="Communication\ICWCommManager.h" />
+    <ClInclude Include="Communication\ICWProtocol.h" />
     <ClInclude Include="Communication\SocketComm.h" />
     <ClInclude Include="Communication\TpManager.h" />
     <ClInclude Include="Comm\DataInfo.h" />
@@ -436,6 +449,8 @@
     <ClInclude Include="Util\font.h" />
     <ClInclude Include="Util\HeaderCtrlEx.h" />
     <ClInclude Include="Util\InPlaceList.h" />
+    <ClInclude Include="Util\DataModels.h" />
+    <ClInclude Include="Util\DBInterface.h" />
     <ClInclude Include="Util\ListCtrlEx.h" />
     <ClInclude Include="Util\Logger.h" />
     <ClInclude Include="Util\MyListCtrl.h" />
@@ -463,6 +478,8 @@
     <ClCompile Include="Communication\PgManager.cpp" />
     <ClCompile Include="Communication\SerialCom.cpp" />
     <ClCompile Include="Communication\SerialRS485.cpp" />
+    <ClCompile Include="Communication\ICWCommManager.cpp" />
+    <ClCompile Include="Communication\ICWProtocol.cpp" />
     <ClCompile Include="Communication\SocketComm.cpp" />
     <ClCompile Include="Communication\TpManager.cpp" />
     <ClCompile Include="Comm\DataInfo.cpp" />
@@ -538,6 +555,7 @@
     <ClCompile Include="Util\font.cpp" />
     <ClCompile Include="Util\HeaderCtrlEx.cpp" />
     <ClCompile Include="Util\InPlaceList.cpp" />
+    <ClCompile Include="Util\DBInterface.cpp" />
     <ClCompile Include="Util\ListCtrlEx.cpp" />
     <ClCompile Include="Util\Logger.cpp" />
     <ClCompile Include="Util\MyListCtrl.cpp" />

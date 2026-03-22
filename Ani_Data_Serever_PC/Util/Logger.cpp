@@ -6,13 +6,27 @@
 #include <iostream>
 #include <CONIO.H>
 
+static void LoggerDbgOut(LPCTSTR fmt, ...)
+{
+	TCHAR buf[1024];
+	memset(buf, 0, sizeof(buf));
+
+	va_list ap;
+	va_start(ap, fmt);
+	_vsntprintf(buf, (sizeof(buf) / sizeof(TCHAR)) - 1, fmt, ap);
+	va_end(ap);
+
+	OutputDebugString(buf);
+	OutputDebugString(_T("\r\n"));
+}
+
 
 #undef PATH_SLASH 
 #define PATH_SLASH           _T('\\') 
 #define enter_cs(k)          EnterCriticalSection(k) 
 #define leave_cs(k)          LeaveCriticalSection(k)
 
-#if _MSC_VER > 1200 // VS6.0 ÀÌ»ó
+#if _MSC_VER > 1200 // VS6.0 ï¿½Ì»ï¿½
 #define init_cs(k)           InitializeCriticalSectionAndSpinCount(k,2000)
 #else 
 #define init_cs(k)          InitializeCriticalSection(k)
@@ -54,7 +68,7 @@ CLogger::CLogger(LPCTSTR szLabel, LPCTSTR szLogFile, BOOL bDbgView)
 	UINT uiThreadId = 0;
 
 #ifndef DIRECT_LOG_MODE
-#if _MSC_VER > 1200 // VS6.0 ÀÌ»ó
+#if _MSC_VER > 1200 // VS6.0 ï¿½Ì»ï¿½
 	InitializeCriticalSectionAndSpinCount(&m_csAdd, 2000);
 #else 
     InitializeCriticalSection(&m_csAdd);
@@ -159,11 +173,43 @@ BOOL CLogger::ReadLogConfig()
 	if(strTemp == _T("x64"))
 		m_strAppPath = m_strAppPath.substr(0,index);
 #endif
-	tstring strFilePath = m_strAppPath;
-//	strFilePath += LOG_SUB_DIR;
-	strFilePath = LOG_CFG_PATH + _T("\\Logger.cfg");
+	// Prefer config in the executable directory, fallback to legacy fixed path (LOG_CFG_PATH).
+	// This lets deployments keep Logger.cfg alongside the exe without needing D:\ANI\DataServer\Bin.
+	tstring strFilePath = m_strAppPath + _T("\\Logger.cfg");
+	LoggerDbgOut(_T("[CLogger] AppPath=%s"), m_strAppPath.c_str());
+	LoggerDbgOut(_T("[CLogger] Try Logger.cfg (exe dir): %s"), strFilePath.c_str());
+	DWORD dwAttr = ::GetFileAttributes(strFilePath.c_str());
+	if (dwAttr == INVALID_FILE_ATTRIBUTES || (dwAttr & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		// Next, try current working directory (some deployments launch from a fixed shortcut folder).
+		TCHAR szCwd[MAX_PATH];
+		memset(szCwd, NULL, MAX_PATH);
+		if (::GetCurrentDirectory(MAX_PATH, szCwd) > 0)
+		{
+			tstring strCwdCfg = tstring(szCwd) + _T("\\Logger.cfg");
+			LoggerDbgOut(_T("[CLogger] Try Logger.cfg (cwd): %s"), strCwdCfg.c_str());
+			dwAttr = ::GetFileAttributes(strCwdCfg.c_str());
+			if (dwAttr != INVALID_FILE_ATTRIBUTES && !(dwAttr & FILE_ATTRIBUTE_DIRECTORY))
+				strFilePath = strCwdCfg;
+		}
+	}
+	if (dwAttr == INVALID_FILE_ATTRIBUTES || (dwAttr & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		strFilePath = LOG_CFG_PATH + _T("\\Logger.cfg");
+		LoggerDbgOut(_T("[CLogger] Try Logger.cfg (fallback): %s"), strFilePath.c_str());
+		dwAttr = ::GetFileAttributes(strFilePath.c_str());
+	}
 
-	//20130710 lee »ý¼ºµÈ Loggerº°·Î ´Ù¸¥ SettingÀ¸·Î º¯°æ 
+	if (dwAttr == INVALID_FILE_ATTRIBUTES || (dwAttr & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		LoggerDbgOut(_T("[CLogger] Logger.cfg NOT FOUND. Using defaults. LastTried=%s"), strFilePath.c_str());
+	}
+	else
+	{
+		LoggerDbgOut(_T("[CLogger] Using Logger.cfg: %s"), strFilePath.c_str());
+	}
+
+	//20130710 lee ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Loggerï¿½ï¿½ï¿½ï¿½ ï¿½Ù¸ï¿½ Settingï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 
 	tstring strSection;
 
 	strSection = m_strLabel + _T("_") + _T("Output");
@@ -180,8 +226,14 @@ BOOL CLogger::ReadLogConfig()
 	m_bUseCache = GetPrivateProfileInt(strSection.c_str(), _T("Log Use Cache Flag"), TRUE, strFilePath.c_str());
 	m_bAutoDelete = GetPrivateProfileInt(strSection.c_str(), _T("Log Auto Delete Flag"), TRUE, strFilePath.c_str());
 
+	LoggerDbgOut(_T("[CLogger] [%s] LogFlag=%d LogLevel=%d UseCache=%d AutoDelete=%d"),
+		strSection.c_str(), m_bLogging, (int)m_eLogLevel, m_bUseCache, m_bAutoDelete);
+	LoggerDbgOut(_T("[CLogger] Target LogFile=%s"), m_strLogFile.c_str());
+
 	if(!SetOutput(m_strLogFile.c_str()))
 	{
+		LoggerDbgOut(_T("[CLogger] Log file open FAILED. LogFile=%s LastError=%lu"),
+			m_strLogFile.c_str(), (unsigned long)::GetLastError());
 		AfxMessageBox(_T("Log File Creation Error!!  Set [Log Flag] to [FALSE]."));
 		m_bLogging = FALSE;
 	}
@@ -220,20 +272,20 @@ BOOL CLogger::CreateFolders(LPCTSTR lpszFolderPath)
 		}
 
 		dwRet = GetFileAttributes(strDir.c_str());
-		if(dwRet != FILE_ATTRIBUTE_DIRECTORY)		// Æú´õ°¡ Á¸ÀçÇÏÁö ¾Ê´Â °æ¿ì.
+		if(dwRet != FILE_ATTRIBUTE_DIRECTORY)		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê´ï¿½ ï¿½ï¿½ï¿½.
 		{
 			iRet = CreateDirectory(strDir.c_str(), NULL);
-			if(iRet == ERROR_PATH_NOT_FOUND)		// »ý¼ºÇÏÁö ¸øÇÑ °æ¿ì. 
+			if(iRet == ERROR_PATH_NOT_FOUND)		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½. 
 				return FALSE;
 		}
 		index++;
 	}while(1);
-	//¸¶Áö¸· Æú´õ...
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½...
 	dwRet = GetFileAttributes(strPath.c_str());
-	if(dwRet != FILE_ATTRIBUTE_DIRECTORY)		// Æú´õ°¡ Á¸ÀçÇÏÁö ¾Ê´Â °æ¿ì.
+	if(dwRet != FILE_ATTRIBUTE_DIRECTORY)		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê´ï¿½ ï¿½ï¿½ï¿½.
 	{
 		int iRet = CreateDirectory(strPath.c_str(), NULL);
-		if(iRet == ERROR_PATH_NOT_FOUND)		// »ý¼ºÇÏÁö ¸øÇÑ °æ¿ì. 
+		if(iRet == ERROR_PATH_NOT_FOUND)		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½. 
 			return FALSE;
 	}
 
@@ -247,7 +299,11 @@ BOOL CLogger::SetOutput(LPCTSTR lpszFilePath)
 	strPath = strPath.substr(0,index);
 
 	if(!CreateFolders(strPath.c_str()))
+	{
+		LoggerDbgOut(_T("[CLogger] CreateFolders FAILED. Path=%s LastError=%lu"),
+			strPath.c_str(), (unsigned long)::GetLastError());
 		return FALSE;	
+	}
 
 	GetLocalTime(&m_tmStart);
 
@@ -257,9 +313,14 @@ BOOL CLogger::SetOutput(LPCTSTR lpszFilePath)
 		m_hFile = CreateFile(lpszFilePath, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
 	
 	if(INVALID_HANDLE_VALUE == m_hFile)
+	{
+		LoggerDbgOut(_T("[CLogger] CreateFile FAILED. File=%s LastError=%lu"),
+			lpszFilePath, (unsigned long)::GetLastError());
 		return false;
+	}
 
 	SetFilePointer(m_hFile,0,NULL,FILE_END);
+	LoggerDbgOut(_T("[CLogger] Log file open OK. File=%s"), lpszFilePath);
 
 	return true;
 }  
@@ -271,13 +332,13 @@ void CLogger::SetUserName(LPCTSTR lpszUserName) //20130705 lee
 }
 CLogger* CLogger::SetSrcPos(LPCTSTR lpszFile, int line, DWORD ThreadId) 
 {
-	//// È£Ãâ ¼ø¼­´ë·Î list upµÇµµ·Ï µ¿±âÈ­ÇØÁÜ.
-	//// ÇØÁ¦´Â AddInfo()¿¡¼­ ÇØÁÜ.
+	//// È£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ list upï¿½Çµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½È­ï¿½ï¿½ï¿½ï¿½.
+	//// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ AddInfo()ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½.
 	EnterCriticalSection(&m_csAdd);
 	m_loginfo.m_strSrcFile = lpszFile; 
 	m_loginfo.m_iSrcLine = line;
 	m_loginfo.m_dwSrcThreadId = ThreadId;
-	m_loginfo.m_bSrc = TRUE; // ¼Ò½º ÀÖÀ½À¸·Î Ã¼Å©
+	m_loginfo.m_bSrc = TRUE; // ï¿½Ò½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ã¼Å©
 
 	return this;
 }
@@ -287,13 +348,13 @@ void CLogger::Log(LPCTSTR fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 	TCHAR* pBuf = NULL;
-//#if _MSC_VER > 1200 // VS6.0 ÀÌ»ó
+//#if _MSC_VER > 1200 // VS6.0 ï¿½Ì»ï¿½
 //	int len = _vsctprintf(fmt, ap) +1; //Null Terminating('\0') +1
 //	pBuf = new TCHAR[len];
 //	_vstprintf_s(pBuf, len, fmt, ap);
 //#else
 	pBuf = new TCHAR[m_iMsgMaxSize];
-	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Size±îÁö¸¸ ¾¸
+	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Sizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 //#endif
 	va_end(ap);
 
@@ -325,13 +386,13 @@ void CLogger::AddInfo(LPCTSTR level, LPCTSTR fmt, va_list& ap)
 {
 	if(!m_bLogging) return;
 
-	// È£Ãâ ¼ø¼­´ë·Î list upµÇµµ·Ï µ¿±âÈ­ÇØÁÜ.
-	// SetSrcPos¸¦ ¾øÀÌ Á÷Á¢ AddInfo ÇÒ °æ¿ì 
+	// È£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ list upï¿½Çµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½È­ï¿½ï¿½ï¿½ï¿½.
+	// SetSrcPosï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ AddInfo ï¿½ï¿½ ï¿½ï¿½ï¿½ 
 	if(!m_loginfo.m_bSrc) 
 		EnterCriticalSection(&m_csAdd);
 
 	TCHAR* pBuf = NULL; 
-//#if _MSC_VER > 1200 // VS6.0 ÀÌ»ó
+//#if _MSC_VER > 1200 // VS6.0 ï¿½Ì»ï¿½
 //	int len = _vsctprintf(fmt, ap) +1; //Null Terminating('\0') +1
 //	if (len > 1)
 //	{
@@ -341,18 +402,18 @@ void CLogger::AddInfo(LPCTSTR level, LPCTSTR fmt, va_list& ap)
 //	else
 //	{
 //		pBuf = new TCHAR[m_iMsgMaxSize];
-//		len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Size±îÁö¸¸ ¾¸
+//		len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Sizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 //	}
 //#else
 	pBuf = new TCHAR[m_iMsgMaxSize];
-	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Size±îÁö¸¸ ¾¸
+	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Sizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 //#endif
 	if(len <= 0)
 	{
 		if(pBuf) 
 			delete [] pBuf;
 
-		m_loginfo.m_bSrc = FALSE; //¸®¼Â
+		m_loginfo.m_bSrc = FALSE; //ï¿½ï¿½ï¿½ï¿½
 		LeaveCriticalSection(&m_csAdd);
 		return;
 	}
@@ -363,7 +424,7 @@ void CLogger::AddInfo(LPCTSTR level, LPCTSTR fmt, va_list& ap)
 		delete [] pBuf;
 	
 	m_lsLogInfo.push_back(m_loginfo);
-	m_loginfo.m_bSrc = FALSE; //¸®¼Â
+	m_loginfo.m_bSrc = FALSE; //ï¿½ï¿½ï¿½ï¿½
 	
 	LeaveCriticalSection(&m_csAdd);
 }
@@ -372,8 +433,8 @@ void CLogger::AddInfo2(LPCTSTR level, LPCTSTR msg)
 {
 	if(!m_bLogging) 
 		return;
-	// È£Ãâ ¼ø¼­´ë·Î list upµÇµµ·Ï µ¿±âÈ­ÇØÁÜ.
-	// SetSrcPos¸¦ ¾øÀÌ Á÷Á¢ AddInfo ÇÒ °æ¿ì
+	// È£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ list upï¿½Çµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½È­ï¿½ï¿½ï¿½ï¿½.
+	// SetSrcPosï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ AddInfo ï¿½ï¿½ ï¿½ï¿½ï¿½
 	if(!m_loginfo.m_bSrc) 
 		EnterCriticalSection(&m_csAdd);
 
@@ -381,7 +442,7 @@ void CLogger::AddInfo2(LPCTSTR level, LPCTSTR msg)
 	m_loginfo.m_strMsg = msg;
 
 	m_lsLogInfo.push_back(m_loginfo);
-	m_loginfo.m_bSrc = FALSE; // ¸®¼Â...
+	m_loginfo.m_bSrc = FALSE; // ï¿½ï¿½ï¿½ï¿½...
 
 	LeaveCriticalSection(&m_csAdd);
 }
@@ -392,7 +453,7 @@ void CLogger::Log(LPCTSTR szLevel, LPCTSTR fmt, va_list& ap)
 		return;
 
 	TCHAR* pBuf = NULL;
-//#if _MSC_VER > 1200 // VS6.0 ÀÌ»ó
+//#if _MSC_VER > 1200 // VS6.0 ï¿½Ì»ï¿½
 //	int len = _vsctprintf(fmt, ap) +1; //Null Terminating('\0') +1
 //	if (len > 1)
 //	{
@@ -402,17 +463,17 @@ void CLogger::Log(LPCTSTR szLevel, LPCTSTR fmt, va_list& ap)
 //	else
 //	{
 //		pBuf = new TCHAR[m_iMsgMaxSize];
-//		len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Size±îÁö¸¸ ¾¸
+//		len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Sizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 //	}
 //#else
 	pBuf = new TCHAR[m_iMsgMaxSize];
-	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Size±îÁö¸¸ ¾¸
+	int len = _vsntprintf(pBuf, m_iMsgMaxSize, fmt, ap); // Max Sizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 //#endif
 	if(len <= 0)
 	{
 		if(pBuf) 
 			delete [] pBuf;
-		m_loginfo.m_bSrc = FALSE; // ¸®¼Â
+		m_loginfo.m_bSrc = FALSE; // ï¿½ï¿½ï¿½ï¿½
 		return;
 	}
 
@@ -423,7 +484,7 @@ void CLogger::Log(LPCTSTR szLevel, LPCTSTR fmt, va_list& ap)
 		delete [] pBuf;
 
 	Log(m_loginfo);
-	m_loginfo.m_bSrc = FALSE; // ¸®¼Â
+	m_loginfo.m_bSrc = FALSE; // ï¿½ï¿½ï¿½ï¿½
 }
 
 void CLogger::Log2(LPCTSTR szLevel, LPCTSTR szMsg) 
@@ -435,7 +496,7 @@ void CLogger::Log2(LPCTSTR szLevel, LPCTSTR szMsg)
 	m_loginfo.m_strMsg = szMsg;
 
 	Log(m_loginfo);
-	m_loginfo.m_bSrc = FALSE; // ¸®¼Â
+	m_loginfo.m_bSrc = FALSE; // ï¿½ï¿½ï¿½ï¿½
 }
 
 #ifndef _UNICODE //150316 JSLee
@@ -569,8 +630,8 @@ void CLogger::Log(LogInfo& loginfo)
 		{
 			ChangeFile(tmNow);
 
-			CStringA strWriteFile; //20150326 mwpark ÀÌ·¸°ÔÇÏ¸é °£´ÜÇÏ°Ô wchar¸¦ char·Î º¯È¯ÇØÁÜ...
-			strWriteFile = str;	//±âÁ¸ ÄÚµå¿¡¼­´Â char¸¦ newÇÏ°í delete¸¦ ¾ÈÇÏ±â‹š¹®¿¡ ¸Þ¸ð¸®leak ¹ß»ý...
+			CStringA strWriteFile; //20150326 mwpark ï¿½Ì·ï¿½ï¿½ï¿½ï¿½Ï¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï°ï¿½ wcharï¿½ï¿½ charï¿½ï¿½ ï¿½ï¿½È¯ï¿½ï¿½ï¿½ï¿½...
+			strWriteFile = str;	//ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¿¡ï¿½ï¿½ï¿½ï¿½ charï¿½ï¿½ newï¿½Ï°ï¿½ deleteï¿½ï¿½ ï¿½ï¿½ï¿½Ï±â‹šï¿½ï¿½ï¿½ï¿½ ï¿½Þ¸ï¿½leak ï¿½ß»ï¿½...
 
 			DWORD dwWritten;
 			WriteFile(m_hFile, strWriteFile.GetBuffer(), (DWORD)strWriteFile.GetLength(), &dwWritten, NULL);
@@ -1015,20 +1076,20 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
 	
  	WIN32_FIND_DATA info;
 
-	HANDLE hp = FindFirstFile(strFileFound.c_str(), &info);   //µð·ºÅä¸®¿¡ ÆÄÀÏÀÌ ÀÖ´ÂÁö Ã¹¹øÂ° ÆÄÀÏ¸¸.
+	HANDLE hp = FindFirstFile(strFileFound.c_str(), &info);   //ï¿½ï¿½ï¿½ä¸®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö´ï¿½ï¿½ï¿½ Ã¹ï¿½ï¿½Â° ï¿½ï¿½ï¿½Ï¸ï¿½.
     
 	do
     {
 		if (!((_tcscmp(info.cFileName, _T(".")) == 0) || (_tcscmp(info.cFileName, _T("..")) == 0)))
 		{
-            if((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)==FILE_ATTRIBUTE_DIRECTORY)  //Subµð·ºÅä¸®°¡ Á¸ÀçÇÏ´Â°æ¿ì 
+            if((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)==FILE_ATTRIBUTE_DIRECTORY)  //Subï¿½ï¿½ï¿½ä¸®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´Â°ï¿½ï¿½ 
             {
                 tstring strSubFolder = lpszFolderPath;
 				strSubFolder += _T("\\");
 				strSubFolder += info.cFileName;
 
 				DeleteLogFiles(strSubFolder.c_str()); /// {return (_Ptr == 0 ? _Nullstr() : _Ptr); } 
-				RemoveDirectory(strSubFolder.c_str()); //ÇÏºÎ¿¡ ÀÖ´Â Æú´õ¸¸ Á¦°ÅÇÏ·Á¸é ¿©±â¼­ È£ÃâÇØÁÜ...
+				RemoveDirectory(strSubFolder.c_str()); //ï¿½ÏºÎ¿ï¿½ ï¿½Ö´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½â¼­ È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½...
              }
             else
 			{
@@ -1036,7 +1097,7 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
 				strFileFound += _T("\\");
 				strFileFound += info.cFileName;
 
-				if(m_strLogFile != strFileFound) // ÇöÀç ±â·ÏÁßÀÎ ÆÄÀÏ Á¦¿Ü...
+				if(m_strLogFile != strFileFound) // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½...
 				{
 					FileTimeToSystemTime(&info.ftLastWriteTime, &stFileTime);
 
@@ -1060,7 +1121,7 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
     
 	FindClose(hp);
 
-//	RemoveDirectory(strSubFolder.c_str()); //Æú´õ Á¦°Å¸¦ ¿©±â¼­ ÇÏ¸é ÀÎÀÚ·Î ³Ñ¾î¿Â °æ·ÎÀÇ ÃÖ»óÀ§ Æú´õµµ Á¦°ÅµÊ.
+//	RemoveDirectory(strSubFolder.c_str()); //ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Å¸ï¿½ ï¿½ï¿½ï¿½â¼­ ï¿½Ï¸ï¿½ ï¿½ï¿½ï¿½Ú·ï¿½ ï¿½Ñ¾ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö»ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Åµï¿½.
 }
 #else
 void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
@@ -1107,20 +1168,20 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
 
 	WIN32_FIND_DATA info;
 
-	HANDLE hp = FindFirstFile(strFileFound.c_str(), &info);   //µð·ºÅä¸®¿¡ ÆÄÀÏÀÌ ÀÖ´ÂÁö Ã¹¹øÂ° ÆÄÀÏ¸¸.
+	HANDLE hp = FindFirstFile(strFileFound.c_str(), &info);   //ï¿½ï¿½ï¿½ä¸®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö´ï¿½ï¿½ï¿½ Ã¹ï¿½ï¿½Â° ï¿½ï¿½ï¿½Ï¸ï¿½.
 
 	do
 	{
 		if (!((strcmp(info.cFileName, ".") == 0) || (strcmp(info.cFileName, "..") == 0)))
 		{
-			if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)  //Subµð·ºÅä¸®°¡ Á¸ÀçÇÏ´Â°æ¿ì 
+			if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)  //Subï¿½ï¿½ï¿½ä¸®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´Â°ï¿½ï¿½ 
 			{
 				tstring strSubFolder = lpszFolderPath;
 				strSubFolder += "\\";
 				strSubFolder += info.cFileName;
 
 				DeleteLogFiles(strSubFolder.c_str()); /// {return (_Ptr == 0 ? _Nullstr() : _Ptr); } 
-				RemoveDirectory(strSubFolder.c_str()); //ÇÏºÎ¿¡ ÀÖ´Â Æú´õ¸¸ Á¦°ÅÇÏ·Á¸é ¿©±â¼­ È£ÃâÇØÁÜ...
+				RemoveDirectory(strSubFolder.c_str()); //ï¿½ÏºÎ¿ï¿½ ï¿½Ö´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½â¼­ È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½...
 			}
 			else
 			{
@@ -1128,7 +1189,7 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
 				strFileFound += "\\";
 				strFileFound += info.cFileName;
 
-				if (m_strLogFile != strFileFound) // ÇöÀç ±â·ÏÁßÀÎ ÆÄÀÏ Á¦¿Ü...
+				if (m_strLogFile != strFileFound) // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½...
 				{
 					FileTimeToSystemTime(&info.ftLastWriteTime, &stFileTime);
 
@@ -1152,7 +1213,7 @@ void CLogger::DeleteLogFiles(LPCTSTR lpszFolderPath)
 
 	FindClose(hp);
 
-	//	RemoveDirectory(strSubFolder.c_str()); //Æú´õ Á¦°Å¸¦ ¿©±â¼­ ÇÏ¸é ÀÎÀÚ·Î ³Ñ¾î¿Â °æ·ÎÀÇ ÃÖ»óÀ§ Æú´õµµ Á¦°ÅµÊ.
+	//	RemoveDirectory(strSubFolder.c_str()); //ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Å¸ï¿½ ï¿½ï¿½ï¿½â¼­ ï¿½Ï¸ï¿½ ï¿½ï¿½ï¿½Ú·ï¿½ ï¿½Ñ¾ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö»ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Åµï¿½.
 }
 #endif
 
@@ -1166,7 +1227,7 @@ void CLogger::Run()
 	{
 		if(!m_lsLogInfo.empty())
 		{
-			// AddÁßÀÌ¸é ±â´Ù¸².
+			// Addï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½Ù¸ï¿½.
 			EnterCriticalSection(&m_csAdd);
 			loginfo = m_lsLogInfo.front();
 			m_lsLogInfo.pop_front();
@@ -1203,8 +1264,8 @@ void CLogger::RunDel()
 	{
 		GetLocalTime(&tmEnd);
 
-//		if((tmEnd.wDay - tmStart.wDay) > 0) // ÇÏ·ç´ÜÀ§·Î ½ÇÇà... //½Ã°£ ´ÜÀ§·Î º¯°æ 		
-		if((tmEnd.wHour - tmStart.wHour) > 0) // ÇÏ·ç´ÜÀ§·Î ½ÇÇà... //½Ã°£ ´ÜÀ§·Î º¯°æ 
+//		if((tmEnd.wDay - tmStart.wDay) > 0) // ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½... //ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 		
+		if((tmEnd.wHour - tmStart.wHour) > 0) // ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½... //ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 
 		{
 			DeleteLogFiles(strPath.c_str());
 			tmStart = tmEnd;
@@ -1226,8 +1287,8 @@ void CLogger::RunDel()
 	{
 		GetLocalTime(&tmEnd);
 
-		//		if((tmEnd.wDay - tmStart.wDay) > 0) // ÇÏ·ç´ÜÀ§·Î ½ÇÇà... //½Ã°£ ´ÜÀ§·Î º¯°æ 		
-		if ((tmEnd.wHour - tmStart.wHour) > 0) // ÇÏ·ç´ÜÀ§·Î ½ÇÇà... //½Ã°£ ´ÜÀ§·Î º¯°æ 
+		//		if((tmEnd.wDay - tmStart.wDay) > 0) // ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½... //ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 		
+		if ((tmEnd.wHour - tmStart.wHour) > 0) // ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½... //ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 
 		{
 			DeleteLogFiles(strPath.c_str());
 			tmStart = tmEnd;

@@ -9,6 +9,38 @@
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
 
+////////////////////////////////////////////////////////////////////////////////
+// CDFSClient（DFS 报工 FTP 客户端，总体流程说明）
+//
+// 1) 角色
+//    - 负责与 DFS Server（MES/报工服务器）做 FTP 连接与文件上传，属于「数据出口」模块：
+//        • 连接 / 断线重连管理（`Connect` / `Disconnect`）
+//        • 维护本地待上传队列（SUM/INDEX/图片路径等）
+//        • 后台线程循环执行上传（通常在 `ThreadRun` 或类似函数中实现）
+//
+// 2) 与整机检测流程的关系
+//    - PLC 线程在完成一片 Panel 的所有结果汇总后，会调用：
+//        • `theApp.m_pFTP->DfsAddTransferFile(&DfsDataValue)`
+//          将一条「整片 Panel 的检测汇总记录」加入 DFSClient 的上传队列
+//    - CDFSClient 内部：
+//        • 按顺序从队列中取出 DfsDataValue
+//        • 生成符合 DFS 规范的 SUM/INDEX 文件内容（文件名含时间/机种/Stage 等）
+//        • 通过 FTP 协议上传到 DFS Server 指定目录（`m_strAddress`/`m_strRemotePath`）
+//        • 上传成功后，从队列中删除本条记录
+//
+// 3) 工程人员关注点
+//    - 配置：
+//        • IP / Port / 用户名 / 密码 等在配置或注册表中维护，本类在 `Connect` 中读取并建立 FTP 会话
+//    - 故障现象：
+//        • 若 DFS 端收不到 SUM/INDEX，优先检查：
+//              - `m_bConnectState` 是否为 TRUE（是否连上 DFS）
+//              - FTP 连接异常日志（CInternetException 信息）
+//              - 本地是否有大量未删掉的 TEMP/SUM/INDEX 文件堆积
+//    - 排查路径建议：
+//        • 看 `CPlcThread::SumDFSDataStart` 是否有调用 `DfsAddTransferFile`
+//        • 再看 `CDFSClient` 中对应的队列/上传线程逻辑（本文件中部），确认是否被正常消费。
+////////////////////////////////////////////////////////////////////////////////
+
 #ifdef _DEBUG
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
@@ -557,6 +589,10 @@ void CDFSClient::Disconnect()
 	}
 }
 
+// 中文说明：
+//   **功能：** 将一片 Panel 的 DFS 上传任务加入队列，由 `RunDfsUploadThread` 线程异步处理。  
+//   **典型调用：** 检测流程结束后，产线逻辑根据 PanelID/FPCID 等信息构造 `DfsDataValue`，调用本函数排队上传。  
+//   **注意：** 这里只负责入队，不做任何文件生成与复制，具体 DFS 文件生成、搬运和 Index 文件创建在上传线程中完成。
 void CDFSClient::DfsAddTransferFile(DfsDataValue strTransferFile)
 {
 	if (strTransferFile.m_PanelID.IsEmpty())
@@ -632,6 +668,16 @@ void CDFSClient::RunDfsDeleatThread()
 }
 void CDFSClient::RunDfsUploadThread()
 {
+	// 中文说明：
+	//   **功能：** DFS 上传主线程入口函数，循环从 `m_DfsUploadtransferFileList` 中取出待上传 Panel，
+	//             完成 SUM CSV/图片整理、目标 DFS 路径构建、DFS/INDEX/LINK 文件生成与搬运。
+	//   **处理流程（_SYSTEM_AMTAFT_ 模式）：**
+	//     1. 从队列取出 `DfsDataValue`（PanelID/FPCID/时间/结果等），清空 `CDFSInfo` / `CDataInfo` 等缓存。
+	//     2. 依据 PanelID 和日期构造 AOI/Viewing/Lumitop/OPV 等源路径，创建 SUM 目录及 Image 目录。
+	//     3. 调用 `CDFSInfo`/`CDataInfo` 读取检测结果、拷贝图像、生成 SUM CSV。
+	//     4. 将 SUM CSV 与图像移动/复制至共享服务器路径（`/MODULE/.../Data`,`/MODULE/.../Image`）。
+	//     5. 生成 LINK 文件和 INDEX 文件，并写入 DFS Index 列表。
+	//     6. 处理完成后将当前 Panel 从队列中弹出，继续下一片 Panel。
 	CDFSInfo DfsInfo;
 	CDataInfo OpvInfo, DataInfo;
 	DfsDataValue dfsData;
@@ -1362,6 +1408,10 @@ UINT CDFSClient::DfsDeleatTask(LPVOID pParam)
 
 UINT CDFSClient::DfsUploadTask(LPVOID pParam)
 {
+	// 中文说明：
+	//   **功能：** 线程包装函数，供 `AfxBeginThread` 调用。将 `pParam` 转回 `CDFSClient*`，
+	//             并调用成员函数 `RunDfsUploadThread` 执行实际的 DFS 上传循环。
+	//   **说明：** 之所以使用静态/全局样式的回调，是为了兼容 MFC 线程创建接口。
 	CDFSClient* pThis = reinterpret_cast<CDFSClient*>(pParam);
 	_ASSERTE(pThis != NULL);
 	pThis->RunDfsUploadThread();
@@ -1370,6 +1420,12 @@ UINT CDFSClient::DfsUploadTask(LPVOID pParam)
 
 BOOL CDFSClient::CreateDfsTask() 
 {
+	// 中文说明：
+	//   **功能：** 创建并启动 DFS 相关后台线程，包括：
+	//     - `m_pThreadDfsUpload`：负责 DFS 文件整理与共享文件夹上传（`RunDfsUploadThread`）。
+	//     - `m_pThreadDfsDeleat`：负责按日期删除旧 DFS 目录（`RunDfsDeleatThread`）。
+	//   **使用时机：** 一般在设备程序初始化阶段（如设备启动时）调用一次，之后通过
+	//                 `DfsAddTransferFile` 不断投递上传任务即可。
 	BOOL bRet = TRUE;
 	m_pThreadDfsUpload = ::AfxBeginThread(DfsUploadTask, this, THREAD_PRIORITY_NORMAL, 0, CREATE_SUSPENDED);
 	if (!m_pThreadDfsUpload)

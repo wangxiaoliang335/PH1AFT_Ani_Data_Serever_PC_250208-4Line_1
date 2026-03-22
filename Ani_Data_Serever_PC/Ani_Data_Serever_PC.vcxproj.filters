@@ -92,6 +92,12 @@
     <ClInclude Include="Communication\SocketComm.h">
       <Filter>Communication</Filter>
     </ClInclude>
+    <ClInclude Include="Communication\ICWCommManager.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
+    <ClInclude Include="Communication\ICWProtocol.h">
+      <Filter>Communication</Filter>
+    </ClInclude>
     <ClInclude Include="Communication\TpManager.h">
       <Filter>Communication</Filter>
     </ClInclude>
@@ -374,6 +380,12 @@
     <ClInclude Include="Util\InPlaceList.h">
       <Filter>Util</Filter>
     </ClInclude>
+    <ClInclude Include="Util\DataModels.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\DBInterface.h">
+      <Filter>Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
@@ -386,6 +398,12 @@
       <Filter>Communication</Filter>
     </ClCompile>
     <ClCompile Include="Communication\SocketComm.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\ICWCommManager.cpp">
+      <Filter>Communication</Filter>
+    </ClCompile>
+    <ClCompile Include="Communication\ICWProtocol.cpp">
       <Filter>Communication</Filter>
     </ClCompile>
     <ClCompile Include="Communication\TpManager.cpp">
@@ -662,6 +680,9 @@
       <Filter>Communication</Filter>
     </ClCompile>
     <ClCompile Include="Util\InPlaceList.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\DBInterface.cpp">
       <Filter>Util</Filter>
     </ClCompile>
   </ItemGroup>

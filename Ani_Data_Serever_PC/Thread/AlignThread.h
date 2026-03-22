@@ -5,6 +5,30 @@
 #include "TimeCheck.h"
 #include "StringSupport.h"
 
+///////////////////////////////////////////////////////////////////////////////
+// FILE : AlignThread.h
+// Class: CAlignThread
+//
+// 中文说明：
+//   本类为“对位(Align) 相关”的逻辑线程类，主要负责驱动 `CAlignManager` /
+//   PLC 等完成对位流程控制。每一路对位工位（上对位 / 下对位 / Tray-Align 等）
+//   对应一个 `CAlignThread` 实例。
+//
+//   - 主要职责：
+//       * 在线程中周期性检查对位启动条件（`AlignCheckMethod` /
+//         `AlignFirstCheckMethod`）
+//       * 根据 Panel / Tray 状态向 Align 设备发出 Grab / Align 命令
+//         （`AlignGrabMethod`、`TrayCheckNTrayAlignGrabMethod`、
+//          `TrayLowerAlignGrabMethod`）
+//       * 解析 Align 结果，并通过 `AlignPLCResult` 把结果写入 PLC，
+//         完成 OK/NG 判定及位置补偿
+//
+//   - 线程与同步：
+//       * 通过 `CreateTask` / `CloseTask` 创建和关闭 MFC 工作线程
+//       * 线程入口函数为 `AlignThreadProc`，循环调用 `ThreadRun`
+//       * 使用 `m_csSocketSend` 对与 Align 设备的发送操作加锁，避免多线程竞争
+///////////////////////////////////////////////////////////////////////////////
+
 class CAlignThread
 {
 public:

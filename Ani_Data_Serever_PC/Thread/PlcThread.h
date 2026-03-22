@@ -7,6 +7,44 @@
 #include "EZini.h"
 #include "TopCtrl.h"
 
+///////////////////////////////////////////////////////////////////////////////
+// FILE : PlcThread.h
+// Class: CPlcThread
+//
+// 中文说明：
+//   本类为与三菱 PLC 通讯及整线逻辑控制的核心线程类。通过与 `CMelsec`、
+//   各种通信管理类（`CPgManager`、`CTpManager`、`COpvManager`、
+//   `CAlignManager` 等）协同工作，实现：
+//     - 机台心跳（HeartBeat）
+//     - Tact 时间统计
+//     - 机种切换 / 模组数据加载
+//     - 报警监控 / 复位
+//     - DFS / 缺陷代码 / AOI / ULD 结果联动等功能。
+//
+//   - 主要线程功能：
+//       * `ThreadRun`        : PLC 主循环逻辑，轮询读取 Word/Bit 并驱动业务流程
+//       * `HeartBitThreadRun`: PLC 心跳监控线程，用于确认 PLC 通信是否正常
+//       * `TactThreadRun`    : 负责 Tact 相关计时与统计
+//
+//   - 机种 / Model 管理：
+//       * `SetModelData` / `SetModelCreate` / `SetModelChangeMethod`
+//         / `ModelCheckMethod`：管理当前生产 Model 信息，并处理机种变更
+//       * 通过 INI（`ModelCreateChangeIniSave/Load/Modify`）保存/加载机种
+//         以及机台参数的变化历史
+//
+//   - 报警与运行时间：
+//       * `AlarmDataParser` / `AlarmResetInfo` / `AxisDataParser`
+//         / `OperateTimeParser`：解析 PLC 中的报警、轴状态及运行时间信息
+//       * `SetAlarmRankCount`：根据报警信息统计各类报警次数及班次
+//
+//   - DFS / 缺陷 / 产品数据：
+//       * `DFSDataStart` / `DefectCodeStart` / `AOIInspectDataParser`
+//         / `ULDInspectDataParser` 等函数（在 _SYSTEM_AMTAFT_ 下）
+//         用于处理 AOI / ULD / DFS 的结果并写入 PLC、更新内部统计
+//       * `ProductDataSave` / `JobDataStart` / `SumDefectCodeStart`
+//         / `SumDFSDataStart`：负责各类生产数据的归档与统计
+///////////////////////////////////////////////////////////////////////////////
+
 class CPlcThread
 {
 public:

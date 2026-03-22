@@ -6,6 +6,24 @@
 //      -------     -------      ------      ----
 //		   1.0      2018/09/12   Hacy		Create	: CSOT 수정
 ///////////////////////////////////////////////////////////////////////////////
+//
+// 中文说明：
+//   本文件定义了 CSOT DFS 报文中用到的各类数据结构（Header / Panel /
+//   EQP / Summary / Defect 等）。这些结构与后续生成的 DFS 文本文件
+//   行字段一一对应，是 DFS 文件解析与生成的基础数据模型。
+//
+//   - 主要结构体：
+//       * `SDFSHeaderInfo`          : DFS 文件头信息（版本、创建时间、机台类型等）
+//       * `SDFAPanel_Data_Begin`    : 单片 Panel 的基本信息（PanelID、Lot、CST 等）
+//       * `SDFSEQPDataBegin`        : 机台级别的开始/结束时间、配方号、Stage 等
+//       * `SDFSPanelSummaryDataVBegin` : Panel 级缺陷汇总结果（等级、主缺陷码等）
+//       * `SDFSDefectDataBegin`     : 单条缺陷的详细坐标、Code、Grade 等
+//
+//   - 使用方式：
+//       * 上层逻辑（如 `CDFSClient`、产线逻辑模块）在内存中填充这些结构体，
+//         再统一转换为 DFS 规定格式的文本行输出到文件。
+//       * `enum` 中的索引值用于在解析/拼装 CSV 或定长字段时进行字段定位。
+///////////////////////////////////////////////////////////////////////////////
 #include <vector>
 #include <map>
 #include "Ani_Data_Serever_PC.h"

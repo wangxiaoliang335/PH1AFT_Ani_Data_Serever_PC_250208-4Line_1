@@ -22,9 +22,6 @@
 #define DFS_SHARE_OPVDFS_PATH  _T("\\\\192.168.1.202\\Data\\Share\\")
 #define FS_SHARE_JOBDATA_PATH  _T("D:\\Data\\Share\\JobData\\")
 
-#define USHORT unsigned short
-#define UINT unsigned int
-
 static USHORT m_codeReset = 0;
 static USHORT m_codeOk = 1;
 static USHORT m_codeFail = 2;
@@ -1171,6 +1168,13 @@ const CString LUMITOP_PC1_PORT_NUM = _T("8031");
 const CString LUMITOP_PC2_PORT_NUM = _T("8032");
 const CString LUMITOP_PC3_PORT_NUM = _T("8033");
 const CString LUMITOP_PC4_PORT_NUM = _T("8034");
+
+// ICW 通信端口（点灯检软件作为 TCP Server，我们作为 Client 连接）
+// const CString ICW_PORT_NUM = _T("6501");
+
+// 点灯检软件 IP 地址和端口从 sysData.ini 读取
+// ICW_SERVER_IP
+// ICW_SERVER_PORT
 #endif
 
 const CString MC_PacketNameTable[MC_PACKET_MAX_NUM] =
@@ -1543,6 +1547,7 @@ struct InspResult
 	CString m_cellId;
 	CString m_FpcID;
 	CString m_strcellId[ChMaxCount];
+	CString m_UniqueID;   // ICW/检测唯一ID，发送开始检测前写入 ivs_lcd_idmap
 	BOOL m_bInspStart;
 	BOOL m_LastCheck;
 	BOOL m_bResult;
@@ -1561,7 +1566,7 @@ struct InspResult
 	{
 		m_iResultValue = m_iIndexPanelNum = m_iPanelNum = m_iPCNum = m_iStatus = m_iCurIndex = m_iGammaRunChNum = 0;
 		m_bGrabEnd = m_bContactOn = m_bResult = m_LastCheck = m_bInspStart = FALSE;
-		m_FpcID = m_strZoneName = m_cellId = m_strcellId[CH_1] = m_strcellId[CH_2] = _T("");
+		m_FpcID = m_strZoneName = m_cellId = m_strcellId[CH_1] = m_strcellId[CH_2] = m_UniqueID = _T("");
 		time_check.StopTimer();
 	}
 };
