@@ -1,19 +1,21 @@
-﻿#pragma once
+#pragma once
 ///////////////////////////////////////////////////////////////////////////////
 // FILE : DBInterface.h
-// 数据库操作接口
-// 用于检测结果和缺陷信息的数据库读写
-// 使用 MySQL Connector/C++ 连接 MySQL 数据库
+// Database operations interface
+// Used for reading and writing inspection results and defect information
+// Uses ODBC (MySQL ODBC 5.3 Driver) to connect to MySQL database
+// Architecture: Thread Local Storage (TLS) - each thread has independent connection
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifndef _DB_INTERFACE_H_
 #define _DB_INTERFACE_H_
 
 #include "DataModels.h"
-#include <mysql/jdbc.h>
+#include <sql.h>
+#include <sqlext.h>
 
 ///////////////////////////////////////////////////////////////////////////////
-// 数据库接口类
+// Database interface class
 ///////////////////////////////////////////////////////////////////////////////
 class CDBInterface
 {
@@ -21,88 +23,87 @@ public:
     CDBInterface();
     virtual ~CDBInterface();
 
-    // ===== 连接管理 =====
+    // ===== Connection Management =====
 
-    // 连接数据库
-    // strConnString: MySQL连接字符串，格式如 "tcp://localhost:3306/database"
-    // 或者 "tcp://127.0.0.1:3306/ivs_lcd?user=root&password=123456"
+    // Connect to database
+    // strConnString: ODBC connection string, format like "DRIVER={MySQL ODBC 5.3 Driver};SERVER=localhost;PORT=3306;DATABASE=ivs_lcd;USER=root;PASSWORD=123456;"
     BOOL Connect(const CString& strConnString);
 
-    // 断开连接
+    // Disconnect from database
     void Disconnect();
 
-    // 是否已连接
+    // Check if connected
     BOOL IsConnected() const { return m_bConnected; }
 
-    // ===== 检测结果操作 =====
+    // ===== Inspection Result Operations =====
 
-    // 插入检测结果
+    // Insert inspection result
     BOOL InsertInspectionResult(const CInspectionResult& result);
 
-    // 更新检测结果
+    // Update inspection result
     BOOL UpdateInspectionResult(const CInspectionResult& result);
 
-    // 更新人工复判结果
+    // Update manual review result
     BOOL UpdateManualReviewResult(const CString& strGUID,
                                    const CString& strResult,
                                    const CString& strCode,
                                    const CString& strGrade,
                                    const CString& strOperator);
 
-    // 更新自动复检结果
+    // Update auto review result
     BOOL UpdateAutoReviewResult(const CString& strGUID,
                                  const CString& strResult,
                                  const CString& strCode,
                                  const CString& strGrade);
 
-    // 按GUID查询
+    // Query by GUID
     BOOL QueryByGUID(const CString& strGUID, CInspectionResult& result);
 
-    // 按屏二维码查询
-    BOOL QueryByScreenID(const CString& strScreenID, CInspectionResultList& results);
+    // Query by panel barcode (using Barcode field)
+    BOOL QueryByBarcode(const CString& strBarcode, CInspectionResultList& results);
 
-    // 按屏二维码查询缺陷码 (用于SetLoadResultCode)
-    // strScreenID: 屏二维码(FpcID)
-    // strCode: 输出缺陷码
-    // strGrade: 输出等级
-    // 返回: 是否查询成功
-    BOOL QueryDefectCodeByScreenID(const CString& strScreenID, CString& strCode, CString& strGrade);
+    // Query defect code by panel barcode (for SetLoadResultCode)
+    // strBarcode: Panel barcode (Barcode)
+    // strCode: Output defect code
+    // strGrade: Output grade
+    // Returns: Whether query was successful
+    BOOL QueryDefectCodeByBarcode(const CString& strBarcode, CString& strCode, CString& strGrade);
 
-    // 按UniqueID查询
+    // Query by UniqueID
     BOOL QueryByUniqueID(const CString& strUniqueID, CInspectionResult& result);
 
-    // 按UniqueID查询检测结果并转换为DFS数据格式（用于FTP上传）
-    // 返回的 DfsDataValue 可直接传给 CDFSClient::AddTransferFile 或 DfsAddTransferFile
+    // Query inspection result by UniqueID and convert to DFS data format (for FTP upload)
+    // Returned DfsDataValue can be directly passed to CDFSClient::AddTransferFile or DfsAddTransferFile
     BOOL QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData);
 
-    // 按日期范围查询
+    // Query by date range
     BOOL QueryByDateRange(const COleDateTime& dtStart,
                           const COleDateTime& dtEnd,
                           CInspectionResultList& results);
 
-    // ===== 缺陷操作 =====
+    // ===== Defect Operations =====
 
-    // 插入缺陷记录
+    // Insert defect record
     BOOL InsertDefectInfo(const CDefectInfo& defect);
 
-    // 批量插入缺陷记录
+    // Batch insert defect records
     BOOL InsertDefectInfoBatch(const CDefectInfoList& defects);
 
-    // 更新缺陷复判结果
+    // Update defect review result
     BOOL UpdateDefectReviewResult(int nSysID,
                                    const CString& strResult,
                                    const CString& strCode,
                                    const CString& strGrade);
 
-    // 查询指定屏的所有缺陷
+    // Query all defects for specified panel
     BOOL QueryDefectsByParentGUID(const CString& strParentGUID, CDefectInfoList& defects);
 
-    // 删除指定屏的所有缺陷
+    // Delete all defects for specified panel
     BOOL DeleteDefectsByParentGUID(const CString& strParentGUID);
 
-    // ===== 统计查询 =====
+    // ===== Statistics Queries =====
 
-    // 按日期统计检测数量
+    // Query inspection count by date
     struct DailyStatistics
     {
         CString Date;
@@ -114,7 +115,7 @@ public:
                             const COleDateTime& dtEnd,
                             std::vector<DailyStatistics>& stats);
 
-    // 获取缺陷类型分布
+    // Get defect type distribution
     struct DefectTypeCount
     {
         CString Type;
@@ -123,60 +124,111 @@ public:
     BOOL GetDefectTypeDistribution(const CString& strParentGUID,
                                     std::vector<DefectTypeCount>& distribution);
 
-    // ===== 工具方法 =====
+    // ===== Utility Methods =====
 
-    // 获取最后错误信息
+    // Get last error message
     CString GetLastError() const { return m_strLastError; }
 
-    // 生成新GUID
+    // Generate new GUID
     static CString GenerateGUID();
 
-    // 生成检测唯一ID（用于 ivs_lcd_idmap，格式 YYYY_MM_DD_HH_MM_SS_fff_JJ，保证不重复）
-    // jigNum: 治具号 0~3 对应 "01"~"04"
+    // Generate unique inspection ID (for ivs_lcd_idmap, format YYYY_MM_DD_HH_MM_SS_fff_JJ, guaranteed unique)
+    // jigNum: Jig number 0~3 corresponding to "01"~"04"
     static CString GenerateUniqueIDForJig(int jigNum);
 
-    // 发送开始检测前更新 ivs_lcd_idmap（供检测软件使用）
-    // markID/mainAoiFixID: 治具号 "01"~"04", posID: 位置号 0~3, uniqueID: 不重复唯一ID, barcode: 产品码
+    // Update ivs_lcd_idmap before inspection starts (for inspection software)
+    // markID/mainAoiFixID: Jig number "01"~"04", posID: Position number 0~3, uniqueID: Unique ID, barcode: Product code
     BOOL UpsertIDMapBeforeStart(const CString& markID, int posID, const CString& uniqueID,
                                 const CString& barcode, const CString& mainAoiFixID);
 
-    // 根据 PanelID/Barcode 查询 ivs_lcd_idmap 获取 UniqueID
+    // UPDATE IVS_LCD_IDMap based on Start$ prefix jig pattern (each jig generates new GUID)
+    // Example "01020304" updates MainAoiFixID 1~4 for 4 records; "01020000" only updates 1, 2. Used before AUTO_TEST / sending Start$.
+    BOOL UpdateIDMapForStartPattern(const CString& strCurrentJigs);
+
+    // Query ivs_lcd_idmap by MainAoiFixID (jig number 1~4) to get UniqueID/Barcode
+    BOOL QueryIDMapByFixtureNo(int nFixtureNo, CIDMapInfo& idMapInfo);
+
+    // Query ivs_lcd_idmap by PanelID/Barcode to get UniqueID
     BOOL QueryIDMapByPanelID(const CString& strPanelID, CIDMapInfo& idMapInfo);
 
-    // 转义SQL字符串
+    // Escape SQL string
     static CString EscapeString(const CString& str);
 
 protected:
-    // 执行SQL语句
+    // Ensure thread has a valid connection (call before each DB operation)
+    BOOL EnsureThreadConnection();
+
+    // Execute SQL statement
     BOOL ExecuteSQL(const CString& strSQL);
 
-    // 获取当前时间SQL函数
+    // Execute SQL query and return result set (caller must call SQLFreeStmt)
+    BOOL ExecuteQuery(const CString& strSQL, SQLHSTMT& hStmt);
+
+    // Get current time SQL function
     CString GetNowFunctionSQL() const;
 
-    // 生成按UniqueID查询的SQL
+    // Generate SQL for querying by UniqueID
     CString GetSelectLatestByUniqueIDSQL(const CString& strUniqueID) const;
 
-    // 插入或更新ID映射
+    // Insert or update ID mapping
     BOOL UpsertIDMap(const CInspectionResult& result);
 
-    // 插入缺陷到指定表
+    // Insert defect to specified table
     BOOL InsertDefectToTable(const CString& strTableName, const CDefectInfo& defect);
 
-    // 从指定表查询缺陷
+    // Query defects from specified table
     BOOL QueryDefectsByParentGUIDFromTable(const CString& strTableName, const CString& strParentGUID, CDefectInfoList& defects);
 
-    // 从指定表删除缺陷
+    // Delete defects from specified table
     BOOL DeleteDefectsByParentGUIDFromTable(const CString& strTableName, const CString& strParentGUID);
 
+    // Get ODBC error message
+    CString GetODBCError(SQLSMALLINT hType, SQLHANDLE hHandle);
+
 private:
-    sql::Connection* m_pConnection;
+    // ===== Thread Local Storage (TLS) Connection Management =====
+    // Maintain independent database connection for each thread to avoid thread competition
+
+    // Get database connection for current thread (thread-safe)
+    SQLHENV GetThreadEnv();
+    SQLHDBC GetThreadConnection();
+
+    // Initialize environment and connection for current thread
+    BOOL InitThreadConnection();
+
+    // Release environment and connection for current thread
+    void ReleaseThreadConnection();
+
+    // Release all thread connections (call when shutting down)
+    void ReleaseAllThreadConnections();
+
+    // Thread local storage index
+    static DWORD sm_nTlsIndex;
+
+    // Main connection string (used to create thread connections)
+    CString m_strMainConnString;
+
+    // Main connection state (for backward compatibility with old interfaces)
+    SQLHENV m_hEnv;
+    SQLHDBC m_hConnection;
     BOOL m_bConnected;
     CString m_strLastError;
-    CRITICAL_SECTION m_csDB;    // 数据库操作锁
+    CRITICAL_SECTION m_csDB;    // Database operation lock (protects main connection and config)
+};
+
+// Thread connection structure for TLS
+struct ThreadDBConnection
+{
+    SQLHENV hEnv;
+    SQLHDBC hConnection;
+    BOOL bConnected;
+    CString strLastError;
+
+    ThreadDBConnection() : hEnv(SQL_NULL_HENV), hConnection(SQL_NULL_HDBC), bConnected(FALSE) {}
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-// 全局数据库接口实例
+// Global database interface instance
 ///////////////////////////////////////////////////////////////////////////////
 CDBInterface& GetDBInterface();
 

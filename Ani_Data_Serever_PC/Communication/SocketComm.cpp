@@ -1186,14 +1186,11 @@ void CSocketComm::Run()
 						RemoveFromList(stMsgProxy.address);
 					}
 
-					//>> 20191101 kang
-					//if(!IsServer())
-					//	StopComm();
-					//if (theApp.m_bExitFlag == FALSE) {
-					//	StopComm();
-					//	theApp.m_pUserLog->LOG_INFO(CStringSupport::FormatString(_T("StopComm=======")));
-					//}
-					//<< 
+					// 通知子类连接已断开
+					OnEvent(EVT_CONDROP, NULL);
+
+					// 关闭连接，防止重复触发 EVT_CONDROP
+					StopComm();
 				}
 
 				// special case for UDP, alert about the event but do not stop

@@ -281,7 +281,7 @@ copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libssl-3-x64.dll
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64\vs14;E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64;.\Melsec;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\bin;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>mysqlcppconn.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;mysqlcppconn.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Midl>

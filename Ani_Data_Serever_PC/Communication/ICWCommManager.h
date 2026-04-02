@@ -1,7 +1,7 @@
 ﻿#pragma once
 ///////////////////////////////////////////////////////////////////////////////
 // FILE : ICWCommManager.h
-// ICW通信管理器 - TCP服务器端，管理与ICW客户端的通信
+// ICW通信管理器 - TCP客户端，自动重连机制
 // 继承自 CSocketComm
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -18,6 +18,10 @@ typedef std::function<void()> ICW_SnapFNCallback;
 typedef std::function<void(const ICW_LegacyFinishInfo&)> ICW_FinishFNCallback;
 typedef std::function<void()> ICW_HeartBeatCallback;
 typedef std::function<ICW_VersionInfo()> ICW_GetVersionCallback;
+
+// 重连配置常量
+const int ICW_RECONNECT_INTERVAL_MS = 3000;   // 重连间隔 3 秒
+const int ICW_MAX_RECONNECT_ATTEMPTS = 0;       // 0 = 无限重连
 
 ///////////////////////////////////////////////////////////////////////////////
 // ICW通信管理器类
@@ -53,8 +57,19 @@ public:
     // 是否已连接
     BOOL IsConnected() const { return m_bConnected; }
     
-    // 服务器是否运行中
-    BOOL IsServerRunning() const { return m_bRunning; }
+    // ===== 自动重连控制 =====
+    
+    // 启动自动重连（仅在客户端模式下有效）
+    void StartAutoReconnect();
+    
+    // 停止自动重连
+    void StopAutoReconnect();
+    
+    // 是否正在自动重连
+    BOOL IsAutoReconnecting() const { return m_bAutoReconnectThreadRunning; }
+    
+    // 重连状态变更回调（可选）
+    void SetReconnectStatusCallback(std::function<void(BOOL bReconnecting, int nAttempts)> callback) { m_cbReconnectStatus = callback; }
     
     // ===== 消息发送 =====
     
@@ -138,9 +153,23 @@ private:
     ICW_FinishFNCallback m_cbFinishFN;
     ICW_HeartBeatCallback m_cbHeartBeat;
     ICW_GetVersionCallback m_cbGetVersion;
+    std::function<void(BOOL, int)> m_cbReconnectStatus;  // 重连状态回调
 
     // 最近一次Start报文协议类型，用于结束回包自动选择格式
     StartProtocol m_lastStartProtocol = StartProtocol::Unknown;
+    
+    // ===== 自动重连成员变量 =====
+    BOOL m_bAutoReconnectThreadRunning;    // 重连线程是否运行
+    int m_nReconnectAttempts;              // 当前重连次数
+    HANDLE m_hReconnectQuitEvent;         // 重连线程退出事件
+    HANDLE m_hReconnectThread;            // 重连线程句柄
+    CRITICAL_SECTION m_csReconnect;       // 重连操作锁
+
+    // 重连线程函数
+    static unsigned int WINAPI ReconnectThreadProc(LPVOID lpParam);
+    
+    // 执行一次重连
+    BOOL ReconnectNow();
 };
 
 #endif // _ICW_COMM_MANAGER_H_

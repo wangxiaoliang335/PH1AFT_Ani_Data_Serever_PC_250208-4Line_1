@@ -1,4 +1,4 @@
-﻿// FTPClient.cpp: implementation of the CDFSClient class.
+// FTPClient.cpp: implementation of the CDFSClient class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -8,6 +8,7 @@
 #include "DfsInfo.h"
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
+#include "DBInterface.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // CDFSClient（DFS 报工 FTP 客户端，总体流程说明）
@@ -723,6 +724,53 @@ void CDFSClient::RunDfsUploadThread()
 
 					strAoiImagePath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\AOI\\Image");
 					strViewingImagePath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\VIEWING\\Image");
+
+					// ===== 按 ImagePath 复制缺陷图像到 AOI 目录 =====
+					// 从数据库查询 ImagePath，先复制到 AOI\Image 目录，后续由 CopyImage 汇总到 SUM\Image
+					CreateFolders(strAoiImagePath);
+					if (GetDBInterface().IsConnected())
+					{
+						// 按 ScreenID 查询最新的检测结果
+						CInspectionResultList results;
+						if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
+						{
+							// 取最新的检测结果
+							CInspectionResult& inspResult = results.front();
+							CDefectInfoList defectList;
+							if (GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
+							{
+								for (const auto& defect : defectList)
+								{
+									if (!defect.ImagePath.IsEmpty())
+									{
+										// ImagePath 可能是相对路径或绝对路径
+										// 如果是相对路径，需要拼接根目录；如果是绝对路径直接使用
+										CString strSrcImagePath = defect.ImagePath;
+										CString strFileName = strSrcImagePath;
+										int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
+										if (nLastSlash >= 0)
+											strFileName = strSrcImagePath.Mid(nLastSlash + 1);
+										CString strDestImagePath = strAoiImagePath + _T("\\") + strFileName;
+
+										if (FileExists(strSrcImagePath))
+										{
+											::CopyFile(strSrcImagePath, strDestImagePath, FALSE);
+											theApp.m_pFTPLog->LOG_DEBUG(_T("CopyImageByPath: %s -> AOI\\Image"), strSrcImagePath);
+										}
+										else
+										{
+											theApp.m_pFTPLog->LOG_INFO(_T("ImagePath file not found: %s"), strSrcImagePath);
+										}
+									}
+								}
+							}
+						}
+						else
+						{
+							theApp.m_pFTPLog->LOG_INFO(_T("QueryByBarcode failed for PanelID: %s"), strPanelID);
+						}
+					}
+					// ===== 按 ImagePath 复制结束 =====
 
 					DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
 					//DfsInfo.CopyImage(strViewingImagePath, strSumImagePath);

@@ -1048,7 +1048,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	if (GetDBInterface().IsConnected())
 	{
 		CString strDBCode, strDBGrade;
-		if (GetDBInterface().QueryDefectCodeByScreenID(strFpcID, strDBCode, strDBGrade))
+		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strDBCode, strDBGrade))
 		{
 			if (!strDBCode.IsEmpty())
 			{
@@ -3945,6 +3945,9 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strDBName = ini[_T("DATABASE")][_T("NAME")];
 	theApp.m_strDBUser = ini[_T("DATABASE")][_T("USER")];
 	theApp.m_strDBPassword = ini[_T("DATABASE")][_T("PASSWORD")];
+
+	// 自动测试模式配置 (LIGHTING.AUTO_TEST)
+	theApp.m_iAutoTestMode = ini[_T("LIGHTING")][_T("AUTO_TEST")];
 #endif
 
 	//>>210422 

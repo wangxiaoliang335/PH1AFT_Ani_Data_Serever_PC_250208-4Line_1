@@ -1,7 +1,8 @@
-﻿///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // FILE : DBInterface.cpp
-// 数据库操作接口实现
-// 使用 MySQL Connector/C++ 连接 MySQL 数据库
+// Database operations interface implementation
+// Uses ODBC (MySQL ODBC 5.3 Driver) to connect to MySQL database
+// Thread Local Storage (TLS): Each thread has independent database connection
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
@@ -14,27 +15,18 @@
 #define new DEBUG_NEW
 #endif
 
-// Helper function to convert CString to std::string
-static std::string CStringToString(const CString& str)
-{
-    CT2A pszStr(str);
-    return std::string(pszStr);
-}
-
-// Helper function to convert std::string to CString
-static CString StringToCString(const std::string& str)
-{
-    return CString(str.c_str());
-}
-
-// Helper function to convert exception message to CString
-static CString ExceptionToCString(sql::SQLException& e)
-{
-    return StringToCString(std::string(e.what()));
-}
+///////////////////////////////////////////////////////////////////////////////
+// TLS Connection Wrapper Structure
+// Each thread has an independent database connection
+///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-// 全局实例
+// TLS Index Initialization
+///////////////////////////////////////////////////////////////////////////////
+DWORD CDBInterface::sm_nTlsIndex = TLS_OUT_OF_INDEXES;
+
+///////////////////////////////////////////////////////////////////////////////
+// Global Instance
 ///////////////////////////////////////////////////////////////////////////////
 static CDBInterface g_DBInterface;
 
@@ -44,236 +36,578 @@ CDBInterface& GetDBInterface()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 构造/析构
+// Constructor / Destructor
 ///////////////////////////////////////////////////////////////////////////////
 CDBInterface::CDBInterface()
     : m_bConnected(FALSE)
-    , m_pConnection(nullptr)
+    , m_hEnv(SQL_NULL_HENV)
+    , m_hConnection(SQL_NULL_HDBC)
+    , m_strMainConnString(_T(""))
 {
     InitializeCriticalSection(&m_csDB);
+
+    // Initialize TLS index (only first time)
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+    {
+        sm_nTlsIndex = TlsAlloc();
+        TRACE(_T("DBInterface: TLS index allocated = %d\n"), sm_nTlsIndex);
+    }
 }
 
 CDBInterface::~CDBInterface()
 {
     Disconnect();
+
+    // Release current thread's TLS connection (if exists)
+    ReleaseThreadConnection();
+
+    // Release TLS index
+    if (sm_nTlsIndex != TLS_OUT_OF_INDEXES)
+    {
+        TlsFree(sm_nTlsIndex);
+        sm_nTlsIndex = TLS_OUT_OF_INDEXES;
+        TRACE(_T("DBInterface: TLS index freed\n"));
+    }
+
     DeleteCriticalSection(&m_csDB);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 连接数据库
+// TLS: Get ODBC environment for current thread
 ///////////////////////////////////////////////////////////////////////////////
-BOOL CDBInterface::Connect(const CString& strConnString)
+SQLHENV CDBInterface::GetThreadEnv()
 {
-	EnterCriticalSection(&m_csDB);
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+    {
+        TRACE(_T("DBInterface::GetThreadEnv - TLS not initialized\n"));
+        return SQL_NULL_HENV;
+    }
 
-	if (m_bConnected)
-	{
-		Disconnect();
-	}
+    ThreadDBConnection* pThreadDB = static_cast<ThreadDBConnection*>(TlsGetValue(sm_nTlsIndex));
+    if (!pThreadDB)
+    {
+        TRACE(_T("DBInterface::GetThreadEnv - No connection for current thread\n"));
+        return SQL_NULL_HENV;
+    }
 
-	try
-	{
-		// 获取 MySQL Driver
-		TRACE(_T("DBInterface: Getting MySQL driver...\n"));
-		sql::Driver* pDriver = sql::mysql::get_mysql_driver_instance();
-		if (!pDriver)
-		{
-			m_strLastError = _T("Failed to get MySQL driver");
-			LeaveCriticalSection(&m_csDB);
-			return FALSE;
-		}
-		TRACE(_T("DBInterface: Driver obtained: %s\n"), pDriver->getName().c_str());
-
-		// 解析连接字符串 (格式: tcp://host:port/database?user=xxx&password=xxx)
-		CString strConn = strConnString;
-		TRACE(_T("DBInterface: Connection string: %s\n"), strConn);
-
-		// 提取 host, port, database
-		CString strHost = _T("localhost");
-		int nPort = 3306;
-		CString strDBName = _T("");
-
-		// 先跳过 tcp://
-		int nTcpPos = strConn.Find(_T("tcp://"));
-		CString strTemp;
-		if (nTcpPos >= 0)
-			strTemp = strConn.Mid(nTcpPos + 6); // tcp:// 是6个字符，跳过
-		else
-			strTemp = strConn;
-
-		// 找 / 或 ? 的位置
-		int nSlash = strTemp.Find(_T("/"));
-		int nQues = strTemp.Find(_T("?"));
-
-		// host:port 部分
-		CString strHostPort;
-		if (nSlash > 0 && nQues > 0)
-			strHostPort = strTemp.Left(min(nSlash, nQues));
-		else if (nSlash > 0)
-			strHostPort = strTemp.Left(nSlash);
-		else if (nQues > 0)
-			strHostPort = strTemp.Left(nQues);
-		else
-			strHostPort = strTemp;
-
-		// 从 host:port 分离
-		int nColon = strHostPort.ReverseFind(_T(':'));
-		if (nColon > 0)
-		{
-			strHost = strHostPort.Left(nColon);
-			CString strPortStr = strHostPort.Mid(nColon + 1);
-			nPort = _ttoi(strPortStr);
-		}
-		else
-		{
-			strHost = strHostPort;
-		}
-
-		// 提取 database (在 / 和 ? 之间)
-		if (nSlash > 0)
-		{
-			CString strAfterSlash;
-			if (nQues > 0 && nQues > nSlash)
-				strAfterSlash = strTemp.Mid(nSlash + 1, nQues - nSlash - 1);
-			else
-				strAfterSlash = strTemp.Mid(nSlash + 1);
-			strDBName = strAfterSlash;
-		}
-
-		// 提取 user 和 password
-		CString strUser = _T("root");
-		CString strPass = _T("");
-
-		int nPos = strConn.Find(_T("user="));
-		if (nPos >= 0)
-		{
-			CString strAfterUser = strConn.Mid(nPos + 5);
-			int nAmp = strAfterUser.Find(_T("&"));
-			if (nAmp > 0)
-				strUser = strAfterUser.Left(nAmp);
-			else
-				strUser = strAfterUser;
-		}
-
-		nPos = strConn.Find(_T("password="));
-		if (nPos >= 0)
-		{
-			CString strAfterPass = strConn.Mid(nPos + 9);
-			int nAmp = strAfterPass.Find(_T("&"));
-			if (nAmp > 0)
-				strPass = strAfterPass.Left(nAmp);
-			else
-				strPass = strAfterPass;
-		}
-
-		TRACE(_T("DBInterface: Parsed host: %s, port: %d, db: %s, user: %s\n"),
-			strHost, nPort, strDBName, strUser);
-
-		// 转换为 std::string
-		std::string hostStr = CStringToString(strHost);
-		std::string userStr = CStringToString(strUser);
-		std::string passStr = CStringToString(strPass);
-		std::string dbStr = CStringToString(strDBName);
-
-		// 使用 ConnectOptionsMap 连接
-		sql::ConnectOptionsMap connectionProperties;
-		connectionProperties[OPT_HOSTNAME] = hostStr.c_str();
-		connectionProperties[OPT_PORT] = nPort;
-		connectionProperties[OPT_USERNAME] = userStr.c_str();
-		connectionProperties[OPT_PASSWORD] = passStr.c_str();
-		if (!dbStr.empty())
-		{
-			connectionProperties[OPT_SCHEMA] = dbStr.c_str();
-		}
-
-		TRACE(_T("DBInterface: Connecting to %s:%d...\n"), strHost, nPort);
-
-		// 连接数据库
-		m_pConnection = pDriver->connect(connectionProperties);
-		if (!m_pConnection)
-		{
-			m_strLastError = _T("Failed to connect to MySQL");
-			LeaveCriticalSection(&m_csDB);
-			return FALSE;
-		}
-
-		m_pConnection->setAutoCommit(true);
-		m_bConnected = TRUE;
-		TRACE(_T("DBInterface: Connected to MySQL database\n"));
-	}
-	catch (sql::SQLException& e)
-	{
-		std::string errMsg = e.what();
-		m_strLastError = StringToCString(errMsg);
-		TRACE(_T("DBInterface: Connection failed - %s\n"), m_strLastError);
-		m_bConnected = FALSE;
-	}
-	catch (std::bad_alloc& e)
-	{
-		m_strLastError = _T("Memory allocation failed - MySQL driver issue");
-		TRACE(_T("DBInterface: bad_alloc - %s\n"), e.what());
-		m_bConnected = FALSE;
-	}
-
-	LeaveCriticalSection(&m_csDB);
-	return m_bConnected;
+    return pThreadDB->hEnv;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 断开连接
+// TLS: Get ODBC connection for current thread
+///////////////////////////////////////////////////////////////////////////////
+SQLHDBC CDBInterface::GetThreadConnection()
+{
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+    {
+        TRACE(_T("DBInterface::GetThreadConnection - TLS not initialized\n"));
+        return SQL_NULL_HDBC;
+    }
+
+    ThreadDBConnection* pThreadDB = static_cast<ThreadDBConnection*>(TlsGetValue(sm_nTlsIndex));
+    if (!pThreadDB)
+    {
+        TRACE(_T("DBInterface::GetThreadConnection - No connection for current thread\n"));
+        return SQL_NULL_HDBC;
+    }
+
+    if (!pThreadDB->bConnected)
+    {
+        TRACE(_T("DBInterface::GetThreadConnection - Thread connection not connected\n"));
+        return SQL_NULL_HDBC;
+    }
+
+    return pThreadDB->hConnection;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TLS: Initialize ODBC environment and connection for current thread
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::InitThreadConnection()
+{
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - TLS not initialized\n"));
+        return FALSE;
+    }
+
+    // Check if connection already exists
+    ThreadDBConnection* pThreadDB = static_cast<ThreadDBConnection*>(TlsGetValue(sm_nTlsIndex));
+    if (pThreadDB && pThreadDB->bConnected)
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - Thread already has connection\n"));
+        return TRUE;
+    }
+
+    // Get main connection string (protected by critical section)
+    CString strConnString;
+    {
+        EnterCriticalSection(&m_csDB);
+        if (m_strMainConnString.IsEmpty())
+        {
+            TRACE(_T("DBInterface::InitThreadConnection - No connection string available\n"));
+            LeaveCriticalSection(&m_csDB);
+            return FALSE;
+        }
+        strConnString = m_strMainConnString;
+        LeaveCriticalSection(&m_csDB);
+    }
+
+    SQLHENV hEnv = SQL_NULL_HENV;
+    SQLHDBC hConnection = SQL_NULL_HDBC;
+    SQLRETURN ret;
+
+    // Allocate environment handle
+    ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HENV, &hEnv);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - Failed to allocate environment handle\n"));
+        return FALSE;
+    }
+
+    // Set ODBC version
+    ret = SQLSetEnvAttr(hEnv, SQL_ATTR_ODBC_VERSION, (void*)SQL_OV_ODBC3, 0);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - Failed to set ODBC version\n"));
+        SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
+        return FALSE;
+    }
+
+    // Allocate connection handle
+    ret = SQLAllocHandle(SQL_HANDLE_DBC, hEnv, &hConnection);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - Failed to allocate connection handle\n"));
+        SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
+        return FALSE;
+    }
+
+    // Set connection timeout
+    SQLSetConnectAttr(hConnection, SQL_LOGIN_TIMEOUT, (SQLPOINTER)10, 0);
+
+    // Connect to database
+    TRACE(_T("DBInterface::InitThreadConnection - Connection string: %s\n"), (LPCTSTR)strConnString);
+    TRACE(_T("DBInterface::InitThreadConnection - Connecting to database...\n"));
+
+    // Use Unicode ODBC function
+    ret = SQLDriverConnect(hConnection, NULL,
+        (SQLWCHAR*)strConnString.GetString(), SQL_NTS,
+        NULL, 0, NULL, SQL_DRIVER_COMPLETE);
+
+    if (!SQL_SUCCEEDED(ret))
+    {
+        CString strError = GetODBCError(SQL_HANDLE_DBC, hConnection);
+        TRACE(_T("DBInterface::InitThreadConnection - Connection failed: %s\n"), strError);
+
+        // Clean up
+        SQLFreeHandle(SQL_HANDLE_DBC, hConnection);
+        SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
+        return FALSE;
+    }
+
+    // Set autocommit mode
+    SQLSetConnectAttr(hConnection, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_ON, 0);
+
+    // Allocate new TLS slot or reuse existing
+    if (!pThreadDB)
+    {
+        pThreadDB = new ThreadDBConnection();
+    }
+
+    pThreadDB->hEnv = hEnv;
+    pThreadDB->hConnection = hConnection;
+    pThreadDB->bConnected = TRUE;
+
+    if (!TlsSetValue(sm_nTlsIndex, pThreadDB))
+    {
+        TRACE(_T("DBInterface::InitThreadConnection - TlsSetValue failed\n"));
+        SQLDisconnect(hConnection);
+        SQLFreeHandle(SQL_HANDLE_DBC, hConnection);
+        SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
+        delete pThreadDB;
+        return FALSE;
+    }
+
+    TRACE(_T("DBInterface::InitThreadConnection - SUCCESS for thread\n"));
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TLS: Ensure thread has a valid connection (call before each DB operation)
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::EnsureThreadConnection()
+{
+    SQLHDBC hConn = GetThreadConnection();
+    if (!hConn)
+    {
+        // Try to initialize thread connection
+        if (!InitThreadConnection())
+        {
+            m_strLastError = _T("Failed to initialize thread database connection");
+            return FALSE;
+        }
+        hConn = GetThreadConnection();
+        if (!hConn)
+        {
+            m_strLastError = _T("Failed to get thread database connection");
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TLS: Release ODBC environment and connection for current thread
+///////////////////////////////////////////////////////////////////////////////
+void CDBInterface::ReleaseThreadConnection()
+{
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+        return;
+
+    ThreadDBConnection* pThreadDB = static_cast<ThreadDBConnection*>(TlsGetValue(sm_nTlsIndex));
+    if (!pThreadDB)
+        return;
+
+    if (pThreadDB->hConnection != SQL_NULL_HDBC)
+    {
+        SQLDisconnect(pThreadDB->hConnection);
+        SQLFreeHandle(SQL_HANDLE_DBC, pThreadDB->hConnection);
+        TRACE(_T("DBInterface::ReleaseThreadConnection - Thread connection closed\n"));
+        pThreadDB->hConnection = SQL_NULL_HDBC;
+    }
+
+    if (pThreadDB->hEnv != SQL_NULL_HENV)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, pThreadDB->hEnv);
+        pThreadDB->hEnv = SQL_NULL_HENV;
+    }
+
+    pThreadDB->bConnected = FALSE;
+    delete pThreadDB;
+    TlsSetValue(sm_nTlsIndex, nullptr);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Release all thread connections (call when shutting down)
+///////////////////////////////////////////////////////////////////////////////
+void CDBInterface::ReleaseAllThreadConnections()
+{
+    // Note: We can only release the current thread's connection here
+    // Other threads' connections will be released when those threads exit
+    ReleaseThreadConnection();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Get ODBC Error Message
+///////////////////////////////////////////////////////////////////////////////
+CString CDBInterface::GetODBCError(SQLSMALLINT hType, SQLHANDLE hHandle)
+{
+    SQLWCHAR szSqlState[SQL_SQLSTATE_SIZE + 1];
+    SQLWCHAR szMessage[SQL_MAX_MESSAGE_LENGTH + 1];
+    SQLINTEGER nNativeError;
+    SQLSMALLINT nMsgLen;
+
+    CString strError;
+    for (int i = 1; i <= 8; i++)
+    {
+        SQLRETURN ret = SQLGetDiagRec(hType, hHandle, i,
+            szSqlState, &nNativeError, szMessage, SQL_MAX_MESSAGE_LENGTH, &nMsgLen);
+        if (SQL_SUCCEEDED(ret))
+        {
+            if (i > 1)
+                strError += _T("; ");
+            strError += CString(szMessage);
+        }
+        else
+        {
+            break;
+        }
+    }
+    return strError;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Connect to database (establishes connection string, TLS will create actual connection)
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::Connect(const CString& strConnString)
+{
+    EnterCriticalSection(&m_csDB);
+
+    // Clear any existing main connection (for compatibility)
+    if (m_hConnection != SQL_NULL_HDBC)
+    {
+        SQLDisconnect(m_hConnection);
+        SQLFreeHandle(SQL_HANDLE_DBC, m_hConnection);
+        m_hConnection = SQL_NULL_HDBC;
+    }
+    if (m_hEnv != SQL_NULL_HENV)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, m_hEnv);
+        m_hEnv = SQL_NULL_HENV;
+    }
+
+    // Parse and validate connection string
+    CString strConn;
+    if (strConnString.Find(_T("DRIVER=")) >= 0 || strConnString.Find(_T("Driver=")) >= 0
+        || strConnString.Find(_T("driver=")) >= 0)
+    {
+        strConn = strConnString;
+    }
+    else
+    {
+        // Simple format: tcp://host:port/database?user=xxx&password=xxx
+        // Convert to ODBC format
+        CString strHost = _T("localhost");
+        int nPort = 3306;
+        CString strDBName = _T("");
+        CString strUser = _T("root");
+        CString strPass = _T("");
+
+        CString strConnTemp = strConnString;
+        int nTcpPos = strConnTemp.Find(_T("tcp://"));
+        CString strTemp;
+        if (nTcpPos >= 0)
+            strTemp = strConnTemp.Mid(nTcpPos + 6);
+        else
+            strTemp = strConnTemp;
+
+        int nSlash = strTemp.Find(_T("/"));
+        int nQues = strTemp.Find(_T("?"));
+
+        CString strHostPort;
+        if (nSlash > 0 && nQues > 0)
+            strHostPort = strTemp.Left(min(nSlash, nQues));
+        else if (nSlash > 0)
+            strHostPort = strTemp.Left(nSlash);
+        else if (nQues > 0)
+            strHostPort = strTemp.Left(nQues);
+        else
+            strHostPort = strTemp;
+
+        int nColon = strHostPort.ReverseFind(_T(':'));
+        if (nColon > 0)
+        {
+            strHost = strHostPort.Left(nColon);
+            CString strPortStr = strHostPort.Mid(nColon + 1);
+            nPort = _ttoi(strPortStr);
+        }
+
+        if (nSlash > 0)
+        {
+            CString strAfterSlash;
+            if (nQues > 0 && nQues > nSlash)
+                strAfterSlash = strTemp.Mid(nSlash + 1, nQues - nSlash - 1);
+            else
+                strAfterSlash = strTemp.Mid(nSlash + 1);
+            strDBName = strAfterSlash;
+        }
+
+        int nPos = strConnTemp.Find(_T("user="));
+        if (nPos >= 0)
+        {
+            CString strAfterUser = strConnTemp.Mid(nPos + 5);
+            int nAmp = strAfterUser.Find(_T("&"));
+            if (nAmp > 0)
+                strUser = strAfterUser.Left(nAmp);
+            else
+                strUser = strAfterUser;
+        }
+
+        nPos = strConnTemp.Find(_T("password="));
+        if (nPos >= 0)
+        {
+            CString strAfterPass = strConnTemp.Mid(nPos + 9);
+            int nAmp = strAfterPass.Find(_T("&"));
+            if (nAmp > 0)
+                strPass = strAfterPass.Left(nAmp);
+            else
+                strPass = strAfterPass;
+        }
+
+        // Try different MySQL ODBC driver names (ANSI version for compatibility)
+        // Common names: "MySQL ODBC 5.3 Driver", "MySQL ODBC 5.3 ANSI Driver", etc.
+        strConn.Format(_T("DRIVER={MySQL ODBC 5.3 ANSI Driver};SERVER=%s;PORT=%d;DATABASE=%s;UID=%s;PWD=%s;"),
+            strHost, nPort, strDBName, strUser, strPass);
+    }
+
+    // Save ODBC format connection string for TLS connection creation
+    m_strMainConnString = strConn;
+
+    // Test connection by creating a temporary connection
+    SQLHENV hTestEnv = SQL_NULL_HENV;
+    SQLHDBC hTestConn = SQL_NULL_HDBC;
+    SQLRETURN ret;
+
+    ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HENV, &hTestEnv);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = _T("Failed to allocate environment handle");
+        LeaveCriticalSection(&m_csDB);
+        return FALSE;
+    }
+
+    ret = SQLSetEnvAttr(hTestEnv, SQL_ATTR_ODBC_VERSION, (void*)SQL_OV_ODBC3, 0);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = _T("Failed to set ODBC version");
+        SQLFreeHandle(SQL_HANDLE_ENV, hTestEnv);
+        LeaveCriticalSection(&m_csDB);
+        return FALSE;
+    }
+
+    ret = SQLAllocHandle(SQL_HANDLE_DBC, hTestEnv, &hTestConn);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = _T("Failed to allocate connection handle");
+        SQLFreeHandle(SQL_HANDLE_ENV, hTestEnv);
+        LeaveCriticalSection(&m_csDB);
+        return FALSE;
+    }
+
+    SQLSetConnectAttr(hTestConn, SQL_LOGIN_TIMEOUT, (SQLPOINTER)10, 0);
+
+    // Debug: Show the actual connection string
+    TRACE(_T("DBInterface: Connection string: %s\n"), (LPCTSTR)strConn);
+    TRACE(_T("DBInterface: Testing connection to database...\n"));
+    ret = SQLDriverConnect(hTestConn, NULL,
+        (SQLWCHAR*)strConn.GetString(), SQL_NTS,
+        NULL, 0, NULL, SQL_DRIVER_COMPLETE);
+
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = GetODBCError(SQL_HANDLE_DBC, hTestConn);
+        TRACE(_T("DBInterface: Connection test failed - %s\n"), m_strLastError);
+
+        SQLFreeHandle(SQL_HANDLE_DBC, hTestConn);
+        SQLFreeHandle(SQL_HANDLE_ENV, hTestEnv);
+        m_strMainConnString.Empty();
+        m_bConnected = FALSE;
+
+        LeaveCriticalSection(&m_csDB);
+        return FALSE;
+    }
+
+    // Connection successful - keep test connection as main connection
+    m_hEnv = hTestEnv;
+    m_hConnection = hTestConn;
+    m_bConnected = TRUE;
+
+    TRACE(_T("DBInterface: Connected to MySQL database via ODBC (main connection OK)\n"));
+
+    LeaveCriticalSection(&m_csDB);
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Disconnect from database
 ///////////////////////////////////////////////////////////////////////////////
 void CDBInterface::Disconnect()
 {
     EnterCriticalSection(&m_csDB);
 
-    if (m_bConnected && m_pConnection)
+    // Release main connection
+    if (m_hConnection != SQL_NULL_HDBC)
     {
-        try
-        {
-            m_pConnection->close();
-            delete m_pConnection;
-            m_pConnection = nullptr;
-        }
-    catch (sql::SQLException& e)
-    {
-        std::string errMsg = e.what();
-        m_strLastError = StringToCString(errMsg);
-        TRACE(_T("DBInterface: Close error - %s\n"), m_strLastError);
-    }
-        m_bConnected = FALSE;
+        SQLDisconnect(m_hConnection);
+        SQLFreeHandle(SQL_HANDLE_DBC, m_hConnection);
+        m_hConnection = SQL_NULL_HDBC;
     }
 
+    if (m_hEnv != SQL_NULL_HENV)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, m_hEnv);
+        m_hEnv = SQL_NULL_HENV;
+    }
+
+    m_bConnected = FALSE;
+    m_strMainConnString.Empty();
+
     LeaveCriticalSection(&m_csDB);
+
+    // Note: TLS connections will be released when their threads exit
+    // or when ReleaseAllThreadConnections() is called
+    TRACE(_T("DBInterface: Disconnected from database\n"));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 执行SQL语句
+// Execute SQL statement (using Thread Local Storage connection)
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::ExecuteSQL(const CString& strSQL)
 {
-    if (!m_bConnected || !m_pConnection)
+    // Ensure thread has a valid connection
+    if (!EnsureThreadConnection())
     {
-        m_strLastError = _T("Not connected to database");
         return FALSE;
     }
 
-    try
+    SQLHDBC hConn = GetThreadConnection();
+    SQLHSTMT hStmt = SQL_NULL_HSTMT;
+    SQLRETURN ret;
+
+    // Allocate statement handle
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
+    if (!SQL_SUCCEEDED(ret))
     {
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        pStmt->execute(sqlStr);
-        return TRUE;
+        m_strLastError = _T("Failed to allocate statement handle");
+        return FALSE;
     }
-    catch (sql::SQLException& e)
+
+    // Execute SQL using Unicode ODBC function
+    ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
+
+    // Free statement handle
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+
+    if (!SQL_SUCCEEDED(ret))
     {
-        m_strLastError = ExceptionToCString(e);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
         TRACE(_T("DBInterface: SQL Error - %s\nSQL: %s\n"), m_strLastError, strSQL);
         return FALSE;
     }
+
+    return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 生成GUID
+// Execute SQL query and return result set
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::ExecuteQuery(const CString& strSQL, SQLHSTMT& hStmt)
+{
+    // Ensure thread has a valid connection
+    if (!EnsureThreadConnection())
+    {
+        return FALSE;
+    }
+
+    SQLHDBC hConn = GetThreadConnection();
+    SQLRETURN ret;
+
+    // Allocate statement handle
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = _T("Failed to allocate statement handle");
+        return FALSE;
+    }
+
+    // Execute SQL using Unicode ODBC function
+    ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
+
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        TRACE(_T("DBInterface: SQL Query Error - %s\nSQL: %s\n"), m_strLastError, strSQL);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        hStmt = SQL_NULL_HSTMT;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Generate GUID
 ///////////////////////////////////////////////////////////////////////////////
 CString CDBInterface::GenerateGUID()
 {
@@ -290,7 +624,7 @@ CString CDBInterface::GenerateGUID()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 生成检测唯一ID（YYYY_MM_DD_HH_MM_SS_fff_JJ，保证不重复）
+// Generate unique inspection ID (YYYY_MM_DD_HH_MM_SS_fff_JJ, guaranteed unique)
 ///////////////////////////////////////////////////////////////////////////////
 CString CDBInterface::GenerateUniqueIDForJig(int jigNum)
 {
@@ -307,14 +641,13 @@ CString CDBInterface::GenerateUniqueIDForJig(int jigNum)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 发送开始检测前更新 ivs_lcd_idmap
+// Update ivs_lcd_idmap before inspection starts
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::UpsertIDMapBeforeStart(const CString& markID, int posID, const CString& uniqueID,
                                           const CString& barcode, const CString& mainAoiFixID)
 {
     if (!m_bConnected)
         return FALSE;
-    EnterCriticalSection(&m_csDB);
 
     CString strSQL;
     strSQL.Format(
@@ -337,13 +670,95 @@ BOOL CDBInterface::UpsertIDMapBeforeStart(const CString& markID, int posID, cons
         EscapeString(mainAoiFixID),
         _T(""));
 
-    BOOL bRet = ExecuteSQL(strSQL);
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    return ExecuteSQL(strSQL);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 转义SQL字符串
+// UPDATE IVS_LCD_IDMap based on Start$ prefix jig pattern
+// Each jig generates new GUID (CoCreateGuid), UPDATE MainAoiFixID corresponding records
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::UpdateIDMapForStartPattern(const CString& strCurrentJigs)
+{
+    if (!m_bConnected)
+    {
+        m_strLastError = _T("Not connected to database");
+        return FALSE;
+    }
+
+    if (strCurrentJigs.GetLength() != 8)
+    {
+        m_strLastError = _T("UpdateIDMapForStartPattern: strCurrentJigs length must be 8");
+        return FALSE;
+    }
+
+    BOOL bAllOk = TRUE;
+    for (int i = 0; i < 4; i++)
+    {
+        CString pair = strCurrentJigs.Mid(i * 2, 2);
+        if (pair.IsEmpty() || pair.CompareNoCase(_T("00")) == 0)
+            continue;
+
+        int nJig = _ttoi(pair);
+        if (nJig < 1 || nJig > 4)
+        {
+            m_strLastError.Format(_T("Invalid jig pair at slot %d: %s"), i, (LPCTSTR)pair);
+            bAllOk = FALSE;
+            continue;
+        }
+
+        // Jig number 1~4 corresponds to MainAoiFixID
+        int nMainAoiFixID = nJig;
+        CString strMarkID;
+        strMarkID.Format(_T("%02d"), nJig);
+
+        // Generate new GUID (CoCreateGuid, globally unique, without braces)
+        GUID guid;
+        CoCreateGuid(&guid);
+        CString strUniqueID;
+        strUniqueID.Format(
+            _T("%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X"),
+            guid.Data1, guid.Data2, guid.Data3,
+            guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+            guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+
+        // Barcode filled with AUTO_TEST marker for easy identification
+        CString strBarcode;
+        strBarcode.Format(_T("AUTO_TEST_%s"), strUniqueID);
+
+        CString strSQL;
+        strSQL.Format(
+            _T("INSERT INTO IVS_LCD_IDMap (MainAoiFixID, UniqueID, Barcode, MarkID, PosID) ")
+            _T("VALUES (%d, '%s', '%s', '%s', %d) ")
+            _T("ON DUPLICATE KEY UPDATE ")
+            _T("UniqueID = VALUES(UniqueID), ")
+            _T("Barcode = VALUES(Barcode), ")
+            _T("MarkID = VALUES(MarkID)"),
+            nMainAoiFixID,
+            EscapeString(strUniqueID),
+            EscapeString(strBarcode),
+            EscapeString(strMarkID),
+            nMainAoiFixID - 1);
+
+        if (!ExecuteSQL(strSQL))
+        {
+            TRACE(_T("UpdateIDMapForStartPattern: UPDATE failed for MainAoiFixID=%d\n"), nMainAoiFixID);
+            bAllOk = FALSE;
+        }
+        else
+        {
+            TRACE(_T("UpdateIDMapForStartPattern: MainAoiFixID=%d, UniqueID=%s, Barcode=%s\n"),
+                nMainAoiFixID, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode);
+        }
+
+        // Millisecond delay to reduce GUID collision risk
+        Sleep(1);
+    }
+
+    return bAllOk;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Escape SQL string
 ///////////////////////////////////////////////////////////////////////////////
 CString CDBInterface::EscapeString(const CString& str)
 {
@@ -390,6 +805,53 @@ BOOL CDBInterface::UpsertIDMap(const CInspectionResult& result)
         _T(""));
 
     return ExecuteSQL(strSQL);
+}
+
+// Helper function to get string from column using SQLGetData
+static CString GetColumnString(SQLHSTMT hStmt, SQLUSMALLINT colIndex)
+{
+    SQLWCHAR buffer[4096];
+    SQLLEN cbLen = 0;
+    SQLRETURN ret;
+
+    ret = SQLGetData(hStmt, colIndex, SQL_C_WCHAR, buffer, sizeof(buffer), &cbLen);
+    if (cbLen == SQL_NULL_DATA || cbLen == 0 || !SQL_SUCCEEDED(ret))
+        return _T("");
+
+    // Handle truncated data
+    if (cbLen >= (SQLLEN)sizeof(buffer))
+    {
+        // Data was truncated, get the actual length
+        SQLLEN cbActual;
+        SQLGetData(hStmt, colIndex, SQL_C_WCHAR, NULL, 0, &cbActual);
+        if (cbActual > 0 && cbActual != SQL_NULL_DATA)
+        {
+            // Allocate and get full data
+            SQLWCHAR* pFullBuffer = new SQLWCHAR[(cbActual / sizeof(SQLWCHAR)) + 1];
+            SQLGetData(hStmt, colIndex, SQL_C_WCHAR, pFullBuffer, cbActual + sizeof(SQLWCHAR), &cbLen);
+            CString str(pFullBuffer);
+            delete[] pFullBuffer;
+            return str;
+        }
+    }
+
+    return CString(buffer);
+}
+
+// Helper function to get integer from column
+static int GetColumnInt(SQLHSTMT hStmt, SQLUSMALLINT colIndex)
+{
+    SQLINTEGER nValue = 0;
+    SQLGetData(hStmt, colIndex, SQL_C_LONG, &nValue, sizeof(nValue), NULL);
+    return (int)nValue;
+}
+
+// Helper function to get double from column
+static double GetColumnDouble(SQLHSTMT hStmt, SQLUSMALLINT colIndex)
+{
+    double dValue = 0.0;
+    SQLGetData(hStmt, colIndex, SQL_C_DOUBLE, &dValue, sizeof(dValue), NULL);
+    return dValue;
 }
 
 BOOL CDBInterface::InsertDefectToTable(const CString& strTableName, const CDefectInfo& defect)
@@ -472,73 +934,71 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
         strTableName,
         EscapeString(strParentGUID));
 
-    if (!m_bConnected || !m_pConnection)
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
         return FALSE;
 
-    try
+    SQLRETURN ret;
+    while ((ret = SQLFetch(hStmt)) != SQL_NO_DATA)
     {
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        while (pRes->next())
+        if (ret == SQL_ERROR)
         {
-            CDefectInfo defect;
-            defect.GUID_Parent = strParentGUID;
-            defect.DefectIndex = pRes->getInt("DefectIndex");
-            defect.Type = StringToCString(pRes->getString("Type").c_str());
-            defect.PatternID = pRes->getInt("PatternID");
-            defect.PatternName = StringToCString(pRes->getString("PatternName").c_str());
-            defect.InspType = StringToCString(pRes->getString("InspType").c_str());
-            defect.Pos_x = pRes->getInt("Pos_x");
-            defect.Pos_y = pRes->getInt("Pos_y");
-            defect.Pos_width = pRes->getInt("Pos_width");
-            defect.Pos_height = pRes->getInt("Pos_height");
-            defect.TrueSize = pRes->getDouble("TrueSize");
-            defect.TrueDiameter = pRes->getDouble("TrueDiameter");
-            defect.TrueLongSize = pRes->getDouble("TrueLongSize");
-            defect.TrueShortSize = pRes->getDouble("TrueShortSize");
-            defect.OriArea = pRes->getInt("OriArea");
-            defect.OriLongSize = pRes->getDouble("OriLongSize");
-            defect.OriShortSize = pRes->getDouble("OriShortSize");
-            defect.GrayScale = pRes->getInt("GrayScale");
-            defect.GrayScale_BK = pRes->getInt("GrayScale_BK");
-            defect.GrayScaleDiff = pRes->getDouble("GrayScaleDiff");
-            defect.GrayscaleMean = pRes->getDouble("GrayscaleMean");
-            defect.GrayscaleMin = pRes->getInt("GrayscaleMin");
-            defect.GrayscaleMax = pRes->getInt("GrayscaleMax");
-            defect.Area = pRes->getInt("Area");
-            defect.Roundness = pRes->getDouble("Roundness");
-            defect.MajorAxisAngle = pRes->getDouble("MajorAxisAngle");
-            defect.JND = pRes->getDouble("JND");
-            defect.Layer = StringToCString(pRes->getString("Layer").c_str());
-            defect.Code_AOI = StringToCString(pRes->getString("Code_AOI").c_str());
-            defect.Grade_AOI = StringToCString(pRes->getString("Grade_AOI").c_str());
-            defect.Level_AOI = StringToCString(pRes->getString("Level_AOI").c_str());
-            defect.DefClass_AOI = StringToCString(pRes->getString("DefClass_AOI").c_str());
-            defect.DefName_AOI = StringToCString(pRes->getString("DefName_AOI").c_str());
-            defect.AlgName = StringToCString(pRes->getString("AlgName").c_str());
-            defect.AlgID = pRes->getInt("AlgID");
-            defect.ReasonCode = StringToCString(pRes->getString("ReasonCode").c_str());
-            defect.FeatureName = StringToCString(pRes->getString("FeatureName").c_str());
-            defect.FeatureMin = StringToCString(pRes->getString("FeatureMin").c_str());
-            defect.FeatureMax = StringToCString(pRes->getString("FeatureMax").c_str());
-            defect.FeatureUnit = StringToCString(pRes->getString("FeatureUnit").c_str());
-            defect.FeatureValue = StringToCString(pRes->getString("FeatureValue").c_str());
-            defect.ImagePath = StringToCString(pRes->getString("ImagePath").c_str());
-            defect.XMLInfo = StringToCString(pRes->getString("XMLInfo").c_str());
-
-            defects.push_back(defect);
+            m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+            TRACE(_T("DBInterface: Fetch defects failed - %s\n"), m_strLastError);
+            SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+            return FALSE;
         }
-        return TRUE;
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        TRACE(_T("DBInterface: Query defects from table failed - %s\n"), m_strLastError);
+
+        CDefectInfo defect;
+        defect.GUID_Parent = strParentGUID;
+        defect.DefectIndex = GetColumnInt(hStmt, 3);
+        defect.Type = GetColumnString(hStmt, 4);
+        defect.PatternID = GetColumnInt(hStmt, 5);
+        defect.PatternName = GetColumnString(hStmt, 6);
+        defect.InspType = GetColumnString(hStmt, 7);
+        defect.Pos_x = GetColumnInt(hStmt, 8);
+        defect.Pos_y = GetColumnInt(hStmt, 9);
+        defect.Pos_width = GetColumnInt(hStmt, 10);
+        defect.Pos_height = GetColumnInt(hStmt, 11);
+        defect.TrueSize = GetColumnDouble(hStmt, 12);
+        defect.TrueDiameter = GetColumnDouble(hStmt, 13);
+        defect.TrueLongSize = GetColumnDouble(hStmt, 14);
+        defect.TrueShortSize = GetColumnDouble(hStmt, 15);
+        defect.OriArea = GetColumnInt(hStmt, 16);
+        defect.OriLongSize = GetColumnDouble(hStmt, 17);
+        defect.OriShortSize = GetColumnDouble(hStmt, 18);
+        defect.GrayScale = GetColumnInt(hStmt, 19);
+        defect.GrayScale_BK = GetColumnInt(hStmt, 20);
+        defect.GrayScaleDiff = GetColumnDouble(hStmt, 21);
+        defect.GrayscaleMean = GetColumnDouble(hStmt, 22);
+        defect.GrayscaleMin = GetColumnInt(hStmt, 23);
+        defect.GrayscaleMax = GetColumnInt(hStmt, 24);
+        defect.Area = GetColumnInt(hStmt, 25);
+        defect.Roundness = GetColumnDouble(hStmt, 26);
+        defect.MajorAxisAngle = GetColumnDouble(hStmt, 27);
+        defect.JND = GetColumnDouble(hStmt, 28);
+        defect.Layer = GetColumnString(hStmt, 29);
+        defect.Code_AOI = GetColumnString(hStmt, 30);
+        defect.Grade_AOI = GetColumnString(hStmt, 31);
+        defect.Level_AOI = GetColumnString(hStmt, 32);
+        defect.DefClass_AOI = GetColumnString(hStmt, 33);
+        defect.DefName_AOI = GetColumnString(hStmt, 34);
+        defect.AlgName = GetColumnString(hStmt, 35);
+        defect.AlgID = GetColumnInt(hStmt, 36);
+        defect.ReasonCode = GetColumnString(hStmt, 37);
+        defect.FeatureName = GetColumnString(hStmt, 38);
+        defect.FeatureMin = GetColumnString(hStmt, 39);
+        defect.FeatureMax = GetColumnString(hStmt, 40);
+        defect.FeatureUnit = GetColumnString(hStmt, 41);
+        defect.FeatureValue = GetColumnString(hStmt, 42);
+        defect.ImagePath = GetColumnString(hStmt, 43);
+        defect.XMLInfo = GetColumnString(hStmt, 44);
+
+        defects.push_back(defect);
     }
 
-    return FALSE;
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+    return TRUE;
 }
 
 BOOL CDBInterface::DeleteDefectsByParentGUIDFromTable(const CString& strTableName, const CString& strParentGUID)
@@ -553,16 +1013,14 @@ BOOL CDBInterface::DeleteDefectsByParentGUIDFromTable(const CString& strTableNam
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 插入检测结果
+// Insert inspection result
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::InsertInspectionResult(const CInspectionResult& result)
 {
-    EnterCriticalSection(&m_csDB);
-
     CString strSQL;
     strSQL.Format(
         _T("INSERT INTO IVS_LCD_InspectionResult ")
-        _T("(GUID, ScreenID, DeviceID, PlatformID, ModelName, UniqueID, MarkID, MainAoiFixID, ")
+        _T("(GUID, Barcode, DeviceID, PlatformID, ModelName, UniqueID, MarkID, MainAoiFixID, ")
         _T("StartTime, StopTime, Status, AOIResult, ")
         _T("LocateShiftX, LocateShiftY, LocateAngle, ")
         _T("RawImageXLen, RawImageYLen, GridImageXLen, GridImageYLen, ")
@@ -592,10 +1050,10 @@ BOOL CDBInterface::InsertInspectionResult(const CInspectionResult& result)
         result.LocateShiftX,
         result.LocateShiftY,
         result.LocateAngle,
-        result.RawImageXLen,
-        result.RawImageYLen,
-        result.GridImageXLen,
-        result.GridImageYLen,
+        (int)result.RawImageXLen,
+        (int)result.RawImageYLen,
+        (int)result.GridImageXLen,
+        (int)result.GridImageYLen,
         result.PanelPhysicalXLen,
         result.PanelPhysicalYLen,
         EscapeString(result.Code_AOI),
@@ -606,21 +1064,16 @@ BOOL CDBInterface::InsertInspectionResult(const CInspectionResult& result)
         EscapeString(result.OperatorID),
         EscapeString(result.XMLInfo));
 
-    // 先写入 IVS_LCD_InspectionResult
-    BOOL bRet = ExecuteSQL(strSQL);
+    // Write to IVS_LCD_InspectionResult first
+    if (!ExecuteSQL(strSQL))
+        return FALSE;
 
-    // 再写入 IVS_LCD_IDMap
-    if (bRet)
-    {
-        bRet = UpsertIDMap(result);
-    }
-
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    // Then write to IVS_LCD_IDMap
+    return UpsertIDMap(result);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 更新人工复判结果
+// Update manual review result
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::UpdateManualReviewResult(const CString& strGUID,
                                              const CString& strResult,
@@ -628,8 +1081,6 @@ BOOL CDBInterface::UpdateManualReviewResult(const CString& strGUID,
                                              const CString& strGrade,
                                              const CString& strOperator)
 {
-    EnterCriticalSection(&m_csDB);
-
     CString strSQL;
     strSQL.Format(
         _T("UPDATE IVS_LCD_InspectionResult SET ")
@@ -646,21 +1097,17 @@ BOOL CDBInterface::UpdateManualReviewResult(const CString& strGUID,
         GetNowFunctionSQL(),
         EscapeString(strGUID));
 
-    BOOL bRet = ExecuteSQL(strSQL);
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    return ExecuteSQL(strSQL);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 更新自动复检结果
+// Update auto review result
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::UpdateAutoReviewResult(const CString& strGUID,
                                            const CString& strResult,
                                            const CString& strCode,
                                            const CString& strGrade)
 {
-    EnterCriticalSection(&m_csDB);
-
     CString strSQL;
     strSQL.Format(
         _T("UPDATE IVS_LCD_InspectionResult SET ")
@@ -675,30 +1122,20 @@ BOOL CDBInterface::UpdateAutoReviewResult(const CString& strGUID,
         GetNowFunctionSQL(),
         EscapeString(strGUID));
 
-    BOOL bRet = ExecuteSQL(strSQL);
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    return ExecuteSQL(strSQL);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 插入缺陷记录
+// Insert defect record
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::InsertDefectInfo(const CDefectInfo& defect)
 {
-    EnterCriticalSection(&m_csDB);
-    // 新旧库表名兼容：先尝试旧表，再尝试新表。
-    BOOL bRet = InsertDefectToTable(_T("IVS_LCD_AOIResult"), defect);
-    if (!bRet)
-    {
-        bRet = InsertDefectToTable(_T("ivs_lcd_aoidefect"), defect);
-    }
-
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    // Only use ivs_lcd_aoidefect table
+    return InsertDefectToTable(_T("ivs_lcd_aoidefect"), defect);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 批量插入缺陷记录
+// Batch insert defect records
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::InsertDefectInfoBatch(const CDefectInfoList& defects)
 {
@@ -713,7 +1150,7 @@ BOOL CDBInterface::InsertDefectInfoBatch(const CDefectInfoList& defects)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 查询缺陷
+// Query defects
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefectInfoList& defects)
 {
@@ -725,397 +1162,366 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    if (!QueryDefectsByParentGUIDFromTable(_T("IVS_LCD_AOIResult"), strParentGUID, defects))
+    if (!QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects))
     {
         defects.clear();
-        QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects);
+        return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 删除缺陷
+// Delete defects
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::DeleteDefectsByParentGUID(const CString& strParentGUID)
 {
-    EnterCriticalSection(&m_csDB);
-
-    BOOL bRet = DeleteDefectsByParentGUIDFromTable(_T("IVS_LCD_AOIResult"), strParentGUID);
-    if (!bRet)
-    {
-        bRet = DeleteDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID);
-    }
-
-    LeaveCriticalSection(&m_csDB);
-    return bRet;
+    // Only use ivs_lcd_aoidefect table
+    return DeleteDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 按GUID查询
+// Query by GUID
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryByGUID(const CString& strGUID, CInspectionResult& result)
 {
-    if (!m_bConnected || !m_pConnection)
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE GUID = '%s'"),
+        EscapeString(strGUID));
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
     {
-        m_strLastError = _T("Not connected to database");
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    if (ret == SQL_ERROR)
     {
-        CString strSQL;
-        strSQL.Format(
-            _T("SELECT * FROM IVS_LCD_InspectionResult WHERE GUID = '%s'"),
-            EscapeString(strGUID));
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        if (!pRes->next())
-        {
-            LeaveCriticalSection(&m_csDB);
-            return FALSE;
-        }
-
-        // 读取字段
-        result.GUID = StringToCString(pRes->getString("GUID").c_str());
-        result.ScreenID = StringToCString(pRes->getString("ScreenID").c_str());
-        result.DeviceID = StringToCString(pRes->getString("DeviceID").c_str());
-        result.UniqueID = StringToCString(pRes->getString("UniqueID").c_str());
-        result.AOIResult = StringToCString(pRes->getString("AOIResult").c_str());
-        result.Grade_AOI = StringToCString(pRes->getString("Grade_AOI").c_str());
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
+    result.GUID = GetColumnString(hStmt, 2);
+    result.ScreenID = GetColumnString(hStmt, 3);
+    result.DeviceID = GetColumnString(hStmt, 4);
+    result.UniqueID = GetColumnString(hStmt, 7);
+    result.AOIResult = GetColumnString(hStmt, 14);
+    result.Grade_AOI = GetColumnString(hStmt, 25);
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 按UniqueID查询
+// Query by UniqueID
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult& result)
 {
-    if (!m_bConnected || !m_pConnection)
+    CString strSQL = GetSelectLatestByUniqueIDSQL(strUniqueID);
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
     {
-        m_strLastError = _T("Not connected to database");
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    if (ret == SQL_ERROR)
     {
-        CString strSQL = GetSelectLatestByUniqueIDSQL(strUniqueID);
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        if (!pRes->next())
-        {
-            LeaveCriticalSection(&m_csDB);
-            return FALSE;
-        }
-
-        result.GUID = StringToCString(pRes->getString("GUID").c_str());
-        result.ScreenID = StringToCString(pRes->getString("ScreenID").c_str());
-        result.UniqueID = StringToCString(pRes->getString("UniqueID").c_str());
-        result.AOIResult = StringToCString(pRes->getString("AOIResult").c_str());
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
+    result.GUID = GetColumnString(hStmt, 2);
+    result.ScreenID = GetColumnString(hStmt, 3);
+    result.UniqueID = GetColumnString(hStmt, 7);
+    result.AOIResult = GetColumnString(hStmt, 14);
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 根据 PanelID/Barcode 查询 ivs_lcd_idmap 获取 UniqueID
+// Query IVS_LCD_IDMap by MainAoiFixID (jig number 1~4) to get UniqueID/ScreenID
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::QueryIDMapByFixtureNo(int nFixtureNo, CIDMapInfo& idMapInfo)
+{
+    if (nFixtureNo < 1 || nFixtureNo > 4)
+    {
+        m_strLastError.Format(_T("Invalid fixture number: %d, expected 1~4"), nFixtureNo);
+        return FALSE;
+    }
+
+    // Format MarkID as '01', '02', '03', '04'
+    CString strMarkID;
+    strMarkID.Format(_T("%02d"), nFixtureNo);
+
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT MarkID, MainAoiFixID, UniqueID, Barcode FROM IVS_LCD_IDMap WHERE MarkID = '%s'"),
+        (LPCTSTR)strMarkID);
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
+    {
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        m_strLastError.Format(_T("No record found for MainAoiFixID: %d"), nFixtureNo);
+        return FALSE;
+    }
+
+    if (ret == SQL_ERROR)
+    {
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        return FALSE;
+    }
+
+    idMapInfo.MarkID = GetColumnString(hStmt, 1);
+    idMapInfo.MainAoiFixID = GetColumnString(hStmt, 2);
+    idMapInfo.UniqueID = GetColumnString(hStmt, 3);
+    idMapInfo.ScreenID = GetColumnString(hStmt, 4);  // Barcode stored in ScreenID field
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Query IVS_LCD_IDMap by PanelID/Barcode to get UniqueID
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryIDMapByPanelID(const CString& strPanelID, CIDMapInfo& idMapInfo)
 {
-    if (!m_bConnected || !m_pConnection)
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT * FROM IVS_LCD_IDMap WHERE Barcode = '%s' OR MarkID = '%s' LIMIT 1"),
+        EscapeString(strPanelID), EscapeString(strPanelID));
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
     {
-        m_strLastError = _T("Not connected to database");
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        m_strLastError = _T("No record found for PanelID: ") + strPanelID;
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    if (ret == SQL_ERROR)
     {
-        CString strSQL;
-        strSQL.Format(
-            _T("SELECT * FROM IVS_LCD_IDMap WHERE Barcode = '%s' OR MarkID = '%s' ORDER BY SysID DESC LIMIT 1"),
-            EscapeString(strPanelID), EscapeString(strPanelID));
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        if (!pRes->next())
-        {
-            LeaveCriticalSection(&m_csDB);
-            m_strLastError = _T("No record found for PanelID: ") + strPanelID;
-            return FALSE;
-        }
-
-        idMapInfo.SysID = pRes->getInt("SysID");
-        idMapInfo.MarkID = StringToCString(pRes->getString("MarkID").c_str());
-        idMapInfo.PosID = pRes->getInt("PosID");
-        idMapInfo.UniqueID = StringToCString(pRes->getString("UniqueID").c_str());
-        idMapInfo.ScreenID = StringToCString(pRes->getString("Barcode").c_str());
-        idMapInfo.MainAoiFixID = StringToCString(pRes->getString("MainAoiFixID").c_str());
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
+    idMapInfo.MarkID = GetColumnString(hStmt, 2);
+    idMapInfo.UniqueID = GetColumnString(hStmt, 4);
+    idMapInfo.ScreenID = GetColumnString(hStmt, 6);
+    idMapInfo.MainAoiFixID = GetColumnString(hStmt, 7);
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 按UniqueID查询检测结果并转换为DFS数据格式
+// Query inspection result by UniqueID and convert to DFS data format
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData)
 {
     dfsData.Reset();
-    if (!m_bConnected || !m_pConnection)
+
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
+        EscapeString(strUniqueID));
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
     {
-        m_strLastError = _T("Not connected to database");
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        m_strLastError = _T("No inspection result found for UniqueID: ") + strUniqueID;
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    if (ret == SQL_ERROR)
     {
-        CString strSQL;
-        strSQL.Format(
-            _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
-            EscapeString(strUniqueID));
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        if (!pRes->next())
-        {
-            LeaveCriticalSection(&m_csDB);
-            m_strLastError = _T("No inspection result found for UniqueID: ") + strUniqueID;
-            return FALSE;
-        }
-
-        // 映射数据库字段到 DFS 格式
-        CString strTemp;
-
-        dfsData.m_PanelID = StringToCString(pRes->getString("ScreenID").c_str());       // 屏二维码
-        dfsData.m_FpcID = dfsData.m_PanelID;                                  // FPC ID 同屏二维码
-
-        dfsData.m_StartTime = StringToCString(pRes->getString("StartTime").c_str());     // 检测开始时间
-        dfsData.m_EndTime = StringToCString(pRes->getString("StopTime").c_str());        // 检测结束时间
-
-        dfsData.m_StageNum = pRes->getInt("PlatformID") + 1;                  // 槽位号 1-4
-
-        strTemp = StringToCString(pRes->getString("AOIResult").c_str());
-        // AOIResult: OK/NG/BrightDot/... → 转换为 OK/NG/BYPASS
-        if (strTemp.CompareNoCase(_T("OK")) == 0)
-            dfsData.m_AOIInpsect = _T("OK");
-        else if (strTemp.IsEmpty() || strTemp.CompareNoCase(_T("NG")) == 0)
-            dfsData.m_AOIInpsect = _T("NG");
-        else
-            dfsData.m_AOIInpsect = _T("NG");  // 其他异常按 NG 处理
-
-        // 其他字段设为默认值或从 InspectionResult 获取
-        dfsData.m_ModelID = _T("");              // 型号ID（从其他表或配置获取）
-        dfsData.m_IndexNum = strTemp;             // 索引号
-        dfsData.m_ChNum = _T("1");                // 通道号
-
-        // 其他工序结果设为 BYPASS（因为只有 AOI 检测）
-        dfsData.m_Contact = _T("BYPASS");
-        dfsData.m_PreGamma = _T("BYPASS");
-        dfsData.m_TpResult = _T("BYPASS");
-        dfsData.m_TpResult2 = _T("BYPASS");
-        dfsData.m_Lumitop = _T("BYPASS");
-        dfsData.m_mura = _T("BYPASS");
-        dfsData.m_opViewResult = _T("BYPASS");
-
-        // 时间相关（只填 AOI 检测的时间）
-        dfsData.m_TpTime = _T("0");
-        dfsData.m_PreGammaTime = _T("0");
-        dfsData.m_TactTime = _T("0");
-        dfsData.m_LoadHandlerTime = _T("");
-        dfsData.m_UnloadHandlerTime = _T("");
-        dfsData.m_PreGammaContactStatus = _T("3");  // BYPASS
-
-        // 设备类型：AOI 检测
-        dfsData.m_TypeNum = 1;  // Machine_AOI = 1
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
+    CString strTemp;
+
+    dfsData.m_PanelID = GetColumnString(hStmt, 3);
+    dfsData.m_FpcID = dfsData.m_PanelID;
+    dfsData.m_StartTime = GetColumnString(hStmt, 10);
+    dfsData.m_EndTime = GetColumnString(hStmt, 11);
+    dfsData.m_StageNum = GetColumnInt(hStmt, 5) + 1;
+
+    strTemp = GetColumnString(hStmt, 14);
+    if (strTemp.CompareNoCase(_T("OK")) == 0)
+        dfsData.m_AOIInpsect = _T("OK");
+    else if (strTemp.IsEmpty() || strTemp.CompareNoCase(_T("NG")) == 0)
+        dfsData.m_AOIInpsect = _T("NG");
+    else
+        dfsData.m_AOIInpsect = _T("NG");
+
+    dfsData.m_ModelID = _T("");
+    dfsData.m_IndexNum = strTemp;
+    dfsData.m_ChNum = _T("1");
+
+    dfsData.m_Contact = _T("BYPASS");
+    dfsData.m_PreGamma = _T("BYPASS");
+    dfsData.m_TpResult = _T("BYPASS");
+    dfsData.m_TpResult2 = _T("BYPASS");
+    dfsData.m_Lumitop = _T("BYPASS");
+    dfsData.m_mura = _T("BYPASS");
+    dfsData.m_opViewResult = _T("BYPASS");
+
+    dfsData.m_TpTime = _T("0");
+    dfsData.m_PreGammaTime = _T("0");
+    dfsData.m_TactTime = _T("0");
+    dfsData.m_LoadHandlerTime = _T("");
+    dfsData.m_UnloadHandlerTime = _T("");
+    dfsData.m_PreGammaContactStatus = _T("3");
+
+    dfsData.m_TypeNum = 1;
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 按屏二维码查询
+// Query by panel barcode
 ///////////////////////////////////////////////////////////////////////////////
-BOOL CDBInterface::QueryByScreenID(const CString& strScreenID, CInspectionResultList& results)
+BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultList& results)
 {
     results.clear();
 
-    if (!m_bConnected || !m_pConnection)
-    {
-        m_strLastError = _T("Not connected to database");
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
+        EscapeString(strBarcode));
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
         return FALSE;
-    }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    SQLRETURN ret;
+    while ((ret = SQLFetch(hStmt)) != SQL_NO_DATA)
     {
-        CString strSQL;
-        strSQL.Format(
-            _T("SELECT * FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
-            EscapeString(strScreenID));
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        while (pRes->next())
+        if (ret == SQL_ERROR)
         {
-            CInspectionResult result;
-            result.GUID = StringToCString(pRes->getString("GUID").c_str());
-            result.ScreenID = StringToCString(pRes->getString("ScreenID").c_str());
-            result.UniqueID = StringToCString(pRes->getString("UniqueID").c_str());
-            result.AOIResult = StringToCString(pRes->getString("AOIResult").c_str());
-            result.Grade_AOI = StringToCString(pRes->getString("Grade_AOI").c_str());
-
-            results.push_back(result);
+            m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+            SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+            return FALSE;
         }
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
-        return FALSE;
+
+        CInspectionResult result;
+        result.GUID = GetColumnString(hStmt, 2);
+        result.ScreenID = GetColumnString(hStmt, 3);
+        result.UniqueID = GetColumnString(hStmt, 7);
+        result.AOIResult = GetColumnString(hStmt, 14);
+        result.Grade_AOI = GetColumnString(hStmt, 25);
+
+        results.push_back(result);
     }
 
-    LeaveCriticalSection(&m_csDB);
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 按屏二维码查询缺陷码 (用于SetLoadResultCode)
-// 查询优先级: Code_ManualReview > Code_AutoReview > Code_AOI
+// Query defect code by panel barcode (for SetLoadResultCode)
+// Query priority: Code_ManualReview > Code_AutoReview > Code_AOI
 ///////////////////////////////////////////////////////////////////////////////
-BOOL CDBInterface::QueryDefectCodeByScreenID(const CString& strScreenID, CString& strCode, CString& strGrade)
+BOOL CDBInterface::QueryDefectCodeByBarcode(const CString& strBarcode, CString& strCode, CString& strGrade)
 {
     strCode = _T("");
     strGrade = _T("");
 
-    if (!m_bConnected || !m_pConnection)
+    CString strSQL;
+    strSQL.Format(
+        _T("SELECT Code_ManualReview, Grade_ManualReview, ")
+        _T("       Code_AutoReview, Grade_AutoReview, ")
+        _T("       Code_AOI, Grade_AOI ")
+        _T("FROM IVS_LCD_InspectionResult ")
+        _T("WHERE ScreenID = '%s' AND Status = 'Finish' ")
+        _T("ORDER BY StartTime DESC LIMIT 1"),
+        EscapeString(strBarcode));
+
+    SQLHSTMT hStmt;
+    if (!ExecuteQuery(strSQL, hStmt))
+        return FALSE;
+
+    SQLRETURN ret = SQLFetch(hStmt);
+    if (ret == SQL_NO_DATA)
     {
-        m_strLastError = _T("Not connected to database");
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+        m_strLastError = _T("No inspection result found for this Barcode");
         return FALSE;
     }
 
-    EnterCriticalSection(&m_csDB);
-
-    try
+    if (ret == SQL_ERROR)
     {
-        CString strSQL;
-        // 查询优先级: 人工复判 > 自动复检 > AOI主检
-        strSQL.Format(
-            _T("SELECT Code_ManualReview, Grade_ManualReview, ")
-            _T("       Code_AutoReview, Grade_AutoReview, ")
-            _T("       Code_AOI, Grade_AOI ")
-            _T("FROM IVS_LCD_InspectionResult ")
-            _T("WHERE ScreenID = '%s' AND Status = 'Finish' ")
-            _T("ORDER BY StartTime DESC LIMIT 1"),
-            EscapeString(strScreenID));
-
-        std::unique_ptr<sql::Statement> pStmt(m_pConnection->createStatement());
-        std::string sqlStr = CStringToString(strSQL);
-        std::unique_ptr<sql::ResultSet> pRes(pStmt->executeQuery(sqlStr));
-
-        if (pRes->next())
-        {
-            // 优先级: ManualReview > AutoReview > AOI
-            CString strCodeManual = StringToCString(pRes->getString("Code_ManualReview").c_str());
-            CString strGradeManual = StringToCString(pRes->getString("Grade_ManualReview").c_str());
-            CString strCodeAuto = StringToCString(pRes->getString("Code_AutoReview").c_str());
-            CString strGradeAuto = StringToCString(pRes->getString("Grade_AutoReview").c_str());
-            CString strCodeAoi = StringToCString(pRes->getString("Code_AOI").c_str());
-            CString strGradeAoi = StringToCString(pRes->getString("Grade_AOI").c_str());
-
-            if (!strCodeManual.IsEmpty())
-            {
-                strCode = strCodeManual;
-                strGrade = strGradeManual;
-            }
-            else if (!strCodeAuto.IsEmpty())
-            {
-                strCode = strCodeAuto;
-                strGrade = strGradeAuto;
-            }
-            else if (!strCodeAoi.IsEmpty())
-            {
-                strCode = strCodeAoi;
-                strGrade = strGradeAoi;
-            }
-        }
-        else
-        {
-            m_strLastError = _T("No inspection result found for this ScreenID");
-            LeaveCriticalSection(&m_csDB);
-            return FALSE;
-        }
-    }
-    catch (sql::SQLException& e)
-    {
-        m_strLastError = ExceptionToCString(e);
-        LeaveCriticalSection(&m_csDB);
+        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         return FALSE;
     }
 
-    LeaveCriticalSection(&m_csDB);
+    CString strCodeManual = GetColumnString(hStmt, 1);
+    CString strGradeManual = GetColumnString(hStmt, 2);
+    CString strCodeAuto = GetColumnString(hStmt, 3);
+    CString strGradeAuto = GetColumnString(hStmt, 4);
+    CString strCodeAoi = GetColumnString(hStmt, 5);
+    CString strGradeAoi = GetColumnString(hStmt, 6);
+
+    if (!strCodeManual.IsEmpty())
+    {
+        strCode = strCodeManual;
+        strGrade = strGradeManual;
+    }
+    else if (!strCodeAuto.IsEmpty())
+    {
+        strCode = strCodeAuto;
+        strGrade = strGradeAuto;
+    }
+    else if (!strCodeAoi.IsEmpty())
+    {
+        strCode = strCodeAoi;
+        strGrade = strGradeAoi;
+    }
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 其他方法的存根实现
+// Stub implementations for other methods
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::UpdateInspectionResult(const CInspectionResult& result)
 {
-    // TODO: 实现完整更新
+    // TODO: Implement full update
     return FALSE;
 }
 
@@ -1123,7 +1529,7 @@ BOOL CDBInterface::QueryByDateRange(const COleDateTime& dtStart,
                                      const COleDateTime& dtEnd,
                                      CInspectionResultList& results)
 {
-    // TODO: 实现日期范围查询
+    // TODO: Implement date range query
     return FALSE;
 }
 
@@ -1131,14 +1537,14 @@ BOOL CDBInterface::GetDailyStatistics(const COleDateTime& dtStart,
                                        const COleDateTime& dtEnd,
                                        std::vector<DailyStatistics>& stats)
 {
-    // TODO: 实现统计查询
+    // TODO: Implement statistics query
     return FALSE;
 }
 
 BOOL CDBInterface::GetDefectTypeDistribution(const CString& strParentGUID,
                                               std::vector<DefectTypeCount>& distribution)
 {
-    // TODO: 实现缺陷类型统计
+    // TODO: Implement defect type statistics
     return FALSE;
 }
 
@@ -1147,6 +1553,6 @@ BOOL CDBInterface::UpdateDefectReviewResult(int nSysID,
                                               const CString& strCode,
                                               const CString& strGrade)
 {
-    // TODO: 实现缺陷复判结果更新
+    // TODO: Implement defect review result update
     return FALSE;
 }

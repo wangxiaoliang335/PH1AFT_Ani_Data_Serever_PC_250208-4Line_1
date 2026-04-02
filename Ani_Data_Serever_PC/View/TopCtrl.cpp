@@ -43,6 +43,7 @@ void CTopCtrl::DoDataExchange(CDataExchange* pDX)
 #if _SYSTEM_AMTAFT_
 	DDX_Control(pDX, IDC_NETWORK_IF_1, m_netWorkIf[NUM_NETWORK_VISION_1]);
 	DDX_Control(pDX, IDC_NETWORK_IF_2, m_netWorkIf[NUM_NETWORK_VISION_2]);
+	DDX_Control(pDX, IDC_NETWORK_IF_18, m_netWorkIf[NUM_NETWORK_VISION_3]);
 	DDX_Control(pDX, IDC_NETWORK_IF_3, m_netWorkIf[NUM_NETWORK_ALIGN]);
 	DDX_Control(pDX, IDC_NETWORK_IF_4, m_netWorkIf[NUM_NETWORK_PLC]);
 	DDX_Control(pDX, IDC_NETWORK_IF_5, m_netWorkIf[NUM_NETWORK_VIEWING_ANGLE_1]); // AMT = Viewing, AFT = Lumitop
@@ -75,7 +76,7 @@ END_MESSAGE_MAP()
 // CTopCtrl message handlers
 BOOL CTopCtrl::OnInitDialogBar()
 {
-	//MainFrame Pointer Àâ¾Æ ³õ´Â´Ù. 
+	//MainFrame Pointer ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â´ï¿½. 
 	pMainFrame = STATIC_DOWNCAST(CMainFrame, AfxGetMainWnd());
 
 	CInitDialogBar::OnInitDialogBar();
@@ -144,6 +145,7 @@ void CTopCtrl::OnTimer(UINT_PTR nIDEvent)
 #if _SYSTEM_AMTAFT_
 	m_netWorkIf[NUM_NETWORK_VISION_1].SetValue(theApp.m_VisionConectStatus[PC1]);
 	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_VisionConectStatus[PC2]);
+	m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_ICWCommManager.IsConnected());
 
 	m_netWorkIf[NUM_NETWORK_ALIGN].SetValue(m_bAlignFlag);
 	m_netWorkIf[NUM_NETWORK_PLC].SetValue(theApp.m_PlcConectStatus);

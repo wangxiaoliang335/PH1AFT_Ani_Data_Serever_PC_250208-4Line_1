@@ -8,21 +8,24 @@
 #include "LumitopThread.h"
 #include "ClrListBox.h"
 
-// CDlgMainView Æû ºäÀÔ´Ï´Ù.
+// è‡ªå®šä¹‰æ¶ˆæ¯ï¼šVision æ—¥å¿—
+#define WM_VISION_LOG (WM_USER + 100)
+
+// CDlgMainView ï¿½ï¿½ ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 class CDlgMainView : public CDialog
 {
 	DECLARE_DYNAMIC(CDlgMainView)
 
 public:
-	CDlgMainView(CWnd* pParent = NULL);   // Ç¥ÁØ »ı¼ºÀÚÀÔ´Ï´Ù.
+	CDlgMainView(CWnd* pParent = NULL);   // Ç¥ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 	virtual ~CDlgMainView();
 
-	// ´ëÈ­ »óÀÚ µ¥ÀÌÅÍÀÔ´Ï´Ù.
+	// ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 	enum { IDD = DLG_MAIN_BOX };
 
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV Áö¿øÀÔ´Ï´Ù.
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 	DECLARE_MESSAGE_MAP()
 public:
@@ -53,6 +56,12 @@ public:
 	CBtnEnh m_btnVisionModelChange1;
 	CBtnEnh m_btnVisionModelChange2;
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+
+	// ICW ?ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½?ï¿½ï¿½
+	afx_msg LRESULT OnICWConnected(WPARAM wParam, LPARAM lParam);
+
+	// Vision çº¿ç¨‹æ—¥å¿—æ¶ˆæ¯å¤„ç†
+	afx_msg LRESULT OnVisionLog(WPARAM wParam, LPARAM lParam);
 };
 extern CDlgMainView *g_DlgMainView;
 

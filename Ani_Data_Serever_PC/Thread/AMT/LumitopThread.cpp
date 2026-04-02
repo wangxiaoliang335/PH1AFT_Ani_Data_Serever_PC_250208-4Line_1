@@ -57,8 +57,8 @@ void CLumitopThread::ThreadRun()
 					m_bStartLumitop[jj] = FALSE;
 			}
 
-			//TEST Model 이 (TRUE) Model 변경도 안보고 그냥 계속 진행 합니다.
-			//TEST Model 이 (FALSE) Model 변경 및 생성 계속 check 
+			//TEST Model ?? (TRUE) Model ???? ????? ??? ??? ???? ????.
+			//TEST Model ?? (FALSE) Model ???? ?? ???? ??? check 
 			if (theApp.m_LumitopPassMode == FALSE)
 			{
 				if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelLumitop1 == TRUE || theApp.m_ChangeModelLumitop2 == TRUE || theApp.m_ChangeModelLumitop3 == TRUE || theApp.m_ChangeModelLumitop4 == TRUE)
@@ -79,46 +79,56 @@ void CLumitopThread::ThreadRun()
 				}
 			}
 
-			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaPlcSend, 0))
-				LumitopPanelCheck();
-			else
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopPcReceiver, 0, FALSE);
+		if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaPlcSend, 0))
+		{
+			TRACE(_T("[Lumitop] GetPLC eBitType_PreGammaPlcSend = TRUE\n"));
+			LumitopPanelCheck();
+		}
+		else
+		{
+			TRACE(_T("[Lumitop] GetPLC eBitType_PreGammaPlcSend = FALSE, Set eBitType_LumitopPcReceiver = FALSE\n"));
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopPcReceiver, 0, FALSE);
+		}
 
-			for (int ii = 0; ii < PanelMaxCount; ii++)
+		for (int ii = 0; ii < PanelMaxCount; ii++)
+		{
+			m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaStart1, OffSet_0 + ii);
+
+			if (m_bStartFlag == FALSE)
 			{
-				m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_PreGammaStart1, OffSet_0 + ii);
+				TRACE(_T("[Lumitop] Panel %d: StartFlag=FALSE, Reset: PreGammaResult=%d, LumitopGrabEnd=FALSE, LumitopEnd=FALSE\n"), 
+					ii + 1, m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + ii, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + ii, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + ii, OffSet_0, FALSE);
+			}
 
-				if (m_bStartFlag == FALSE)
+			if (m_bStartLumitop[ii] == !m_bStartFlag)
+			{
+				m_bStartLumitop[ii] = m_bStartFlag;
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Lumititop Panel %d Start Flag [%s]"), ii + 1, m_bStartLumitop[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
+
+				if (m_bStartFlag == TRUE)
 				{
+					TRACE(_T("[Lumitop] Panel %d: StartFlag=TRUE, Reset before inspection: PreGammaResult=%d, GrabEnd=FALSE, End=FALSE\n"), 
+						ii + 1, m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + ii, &m_codeReset);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + ii, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + ii, OffSet_0, FALSE);
-				}
-
-				if (m_bStartLumitop[ii] == !m_bStartFlag)
-				{
-					m_bStartLumitop[ii] = m_bStartFlag;
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Lumitop Panel %d Start Flag [%s]"), ii + 1, m_bStartLumitop[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
-
-					if (m_bStartFlag == TRUE)
+					//Delay(100);
+					m_iPcNum = ii;
+					if (theApp.m_bCG_16_USE)
 					{
-						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + ii, &m_codeReset);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + ii, OffSet_0, FALSE);
-						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + ii, OffSet_0, FALSE);
-						//Delay(100);
-						m_iPcNum = ii;
-						if (theApp.m_bCG_16_USE)
-						{
-							m_iPattern_Num[ii] = 0;
-							CG16_PatternChange(ii);							
-						}
-						else
-						{
-							LumitopInspectionMethod(m_iPcNum, PanelNum1 + ii);
-						}
+						m_iPattern_Num[ii] = 0;
+						CG16_PatternChange(ii);							
+					}
+					else
+					{
+						LumitopInspectionMethod(m_iPcNum, PanelNum1 + ii);
 					}
 				}
 			}
+		}
 
 			for (auto &InspResult : theApp.m_lastLumitopResultVec)
 			{
@@ -126,6 +136,8 @@ void CLumitopThread::ThreadRun()
 				{
 					if (InspResult.time_check.IsTimeOver())
 					{
+						TRACE(_T("[Lumitop] PC=%d Panel=%d Timeout! Call LumitopPLCResult with Code=%d\n"), 
+							InspResult.m_iPCNum, InspResult.m_iPanelNum, m_codeTimeOut);
 						LumitopPLCResult(InspResult.m_iPCNum,
 							InspResult.m_iPanelNum,
 							PLC_ResultValue[m_codeTimeOut],
@@ -141,6 +153,8 @@ void CLumitopThread::ThreadRun()
 				{
 					if (InspResult.time_check.IsTimeOver())
 					{
+						TRACE(_T("[Lumitop] PC=%d Panel=%d Last Grab Timeout! SocketSend MC_INSPECTION_END\n"), 
+							InspResult.m_iPCNum, InspResult.m_iPanelNum);
 						CString sendMsg;
 						sendMsg.Format(_T("%d,%s"), MC_INSPECTION_END, InspResult.m_cellId);
 						SocketSendto(InspResult.m_iPCNum, sendMsg, MC_INSPECTION_END);
@@ -182,7 +196,7 @@ void CLumitopThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	GetSockName(addrin);
 	int Num = ntohs(addrin.GetPort()) - _ttoi(LUMITOP_PC1_PORT_NUM);
 
-	//통신중 연결 되어 들어올경우에는 for 문으로 ETX 기준으로 파싱해서 전부 가져올수 있도록 수정
+	//????? ???? ??? ?????????? for ?????? ETX ???????? ?????? ???? ??????? ????? ????
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -389,7 +403,7 @@ void CLumitopThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 void CLumitopThread::LumitopFirstCheckMethod(int Num)
 {
 	BOOL bModelCreate, bModelChange;
-	//처음 보내주는것이 IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), 모델명(MC_MODEL)
+	//??? ??????????? IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ???(MC_MODEL)
 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_LumitopSocketManager[Num].m_iLumitopSocketCheckCount);
 	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
 	Delay(200, TRUE);
@@ -483,6 +497,7 @@ void CLumitopThread::ParsingPcTimeRequest(int Num, CString strContents)
 
 void CLumitopThread::LumitopInspectionMethod(int Num, int panelNum)
 {
+	TRACE(_T("[LumitopInspectionMethod] PC=%d, PanelNum=%d Start\n"), Num, panelNum);
 	if (theApp.m_CurrentIndexZone < 0)
 	{
 		LumitopPLCResult(Num, panelNum, _T("PLC Lumitop IndexZone Error"), m_codeResponseError, _T("NG"), 0);
@@ -501,9 +516,11 @@ void CLumitopThread::LumitopInspectionMethod(int Num, int panelNum)
 	}
 	else
 	{
+		TRACE(_T("[LumitopInspectionMethod] Read PLC Panel Data from eWordType_PreGammaPanel1+%d\n"), panelNum);
 		theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_PreGammaPanel1 + panelNum, &pPanelData);
 		strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
 
+		TRACE(_T("[LumitopInspectionMethod] Read PLC FPC ID from eWordType_PreGammaFpcID1+%d\n"), panelNum);
 		theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_PreGammaFpcID1 + panelNum, &pFpcData);
 		strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 	}
@@ -526,6 +543,7 @@ void CLumitopThread::LumitopInspectionMethod(int Num, int panelNum)
 	BOOL bFlag = LumitopVecAdd(strPanel, strFpcID, panelNum, indexPanelNum, Num, iCurIndex);
 	if (bFlag)
 	{
+		TRACE(_T("[LumitopInspectionMethod] Send MC_INSPECTION_START: %s\n"), sendMsg);
 		sendMsg.Format(_T("%d,%s,%d,%s,%s"), MC_INSPECTION_START, strPanel, indexPanelNum, strProcessID, strFpcID);
 		SocketSendto(Num, sendMsg, MC_INSPECTION_START);
 	}
@@ -540,7 +558,9 @@ void CLumitopThread::ParsingGrabEnd(int Num, CString strContents)
 	strPanelID = responseTokens[0];
 	strPanelID.Trim();
 
+	TRACE(_T("[ParsingGrabEnd] RCV MC_GRAB_END: PanelID=%s\n"), strPanelID);
 	sendMsg.Format(_T("%d,%s"), MC_GRAB_END_RECEIVE, strPanelID);
+	TRACE(_T("[ParsingGrabEnd] Send MC_GRAB_END_RECEIVE: %s\n"), sendMsg);
 	SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
 
 	for (auto &InspResult : theApp.m_lastLumitopResultVec)
@@ -550,6 +570,7 @@ void CLumitopThread::ParsingGrabEnd(int Num, CString strContents)
 			if (InspResult.m_bInspStart == TRUE)
 			{
 				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Lumitop Grab End"), strPanelID), Num);
+				TRACE(_T("[ParsingGrabEnd] Set PLC LumitopGrabEnd1+%d = TRUE\n"), InspResult.m_iPanelNum);
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
 				InspResult.m_bGrabEnd = TRUE;
 				break;
@@ -712,9 +733,9 @@ BOOL CLumitopThread::getConectCheck()
 	GetSockName(addrin);
 	LONG  uAddr = addrin.GetIPAddr();
 	if (uAddr == 0)
-		return FALSE;	//접속안함
+		return FALSE;	//???????
 	else
-		return TRUE;	//접속함
+		return TRUE;	//??????
 }
 
 void CLumitopThread::RemoveClient()
@@ -816,12 +837,15 @@ void CLumitopThread::LumitopPLCResult(int Num, int iPanelNum, CString ResultMsg,
 	if (theApp.m_LumitopPassMode)
 		ResultCode = m_codeOk;
 
+	TRACE(_T("[LumitopPLCResult] Panel=%d, ResultCode=%d (%s)\n"), iPanelNum, ResultCode, ResultMsg);
 	theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + iPanelNum, &ResultCode);
+	TRACE(_T("[LumitopPLCResult] Set LumitopGrabEnd1+%d = TRUE, LumitopEnd1+%d = TRUE\n"), iPanelNum, iPanelNum);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopGrabEnd1 + iPanelNum, OffSet_0, TRUE);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_LumitopEnd1 + iPanelNum, OffSet_0, TRUE);
 
 	if (iIndexPanelNum != 0)
 	{
+		TRACE(_T("[LumitopPLCResult] Send PG Pattern: Ch,%d,PTRN,3\n"), iIndexPanelNum);
 		CString strMsg = CStringSupport::FormatString(_T("Ch,%d,PTRN,3"), iIndexPanelNum);
 		theApp.m_PgSocketManager[PgServer_1].SendPGMessage(strMsg, iIndexPanelNum);
 	}

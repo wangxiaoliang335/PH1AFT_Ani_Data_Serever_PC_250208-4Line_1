@@ -9,6 +9,7 @@
 #include "DlgMainView.h"
 #include "MainFrm.h"
 #include "DBInterface.h"
+#include "ICWCommManager.h"
 
 // CDlgMainView
 
@@ -45,6 +46,8 @@ void CDlgMainView::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CDlgMainView, CDialog)
 	ON_WM_TIMER()
+	ON_MESSAGE(CICWCommManager::WM_ICW_CONNECTED, OnICWConnected)
+	ON_MESSAGE(WM_VISION_LOG, OnVisionLog)
 END_MESSAGE_MAP()
 
 
@@ -60,6 +63,9 @@ BOOL CDlgMainView::OnInitDialog()
 		theApp.m_VisionThread = new CVisionThread();
 		theApp.m_VisionThread->CreateTask();
 	}
+
+	// 设置 ICW 父窗口（用于接收连接成功消息）
+	theApp.m_ICWCommManager.SetParentWnd(this->m_hWnd);
 
 	if (!theApp.m_ViewingAngleThread)
 	{
@@ -256,6 +262,61 @@ void CDlgMainView::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	CDialog::OnTimer(nIDEvent);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// ICW 连接成功消息处理
+// 在连接建立后发送 Start$ 信号（AUTO_TEST 模式）
+///////////////////////////////////////////////////////////////////////////////
+LRESULT CDlgMainView::OnICWConnected(WPARAM wParam, LPARAM lParam)
+{
+#if _SYSTEM_AMTAFT_
+	// AUTO_TEST 模式：连接成功后模拟发送 Start$ 信号
+	// 【重要修复】检查是否已经有 Start$ 在进行中，避免重复发送
+	if (theApp.m_iAutoTestMode == 1)
+	{
+		// 检查 VisionThread 是否存在
+		if (theApp.m_VisionThread)
+		{
+			// 使用 getter 函数检查是否已经有 Start$ 在进行中
+			if (theApp.m_VisionThread->IsICWStartInProgress())
+			{
+				theApp.m_PlcLog->LOG_INFO(_T("[AUTO_TEST] ICW Connected, but Start$ already in progress - skip sending"));
+			}
+			else
+			{
+				theApp.m_PlcLog->LOG_INFO(_T("[AUTO_TEST] ICW Connected, AUTO_TEST=1, Sending Start$ signal"));
+				// 传入 TRUE 表示模拟模式，直接发送所有槽位
+				theApp.m_VisionThread->SendICWStartMessage(TRUE);
+				// 【重要修复】发送后立即设置标志，防止重复发送
+				// 只有在 AUTO_TEST 模式下才在这里设置标志
+				theApp.m_VisionThread->SetICWStartSent(TRUE);
+				theApp.m_PlcLog->LOG_INFO(_T("[AUTO_TEST] ICW Start$ flags set to TRUE - preventing duplicate sends"));
+			}
+		}
+	}
+#endif
+	return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Vision 线程日志消息处理（在 UI 线程中执行，可以安全操作 ListBox）
+// wParam: ListBox 索引 (int)
+// lParam: 指向日志字符串的指针 (CString*)
+///////////////////////////////////////////////////////////////////////////////
+LRESULT CDlgMainView::OnVisionLog(WPARAM wParam, LPARAM lParam)
+{
+	int nListBoxIndex = (int)wParam;
+	CString* pStrLog = (CString*)lParam;
+
+	if (pStrLog && ::IsWindow(m_VisionListBox[0].m_hWnd))
+	{
+		m_VisionListBox[nListBoxIndex].InsertString(0,
+			CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), *pStrLog));
+		delete pStrLog;  // 记得释放内存
+	}
+
+	return 0;
 }
 #endif
 

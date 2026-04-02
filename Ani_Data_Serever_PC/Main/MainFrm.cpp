@@ -58,6 +58,23 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	EnableDocking(CBRS_ALIGN_ANY);
 	SendMessage(WM_COMMAND, WM_USER_INIT_SYSTEM, 0);
 
+#if _SYSTEM_AMTAFT_
+	theApp.m_pComView = new CComView;
+	theApp.m_pComView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
+		AFX_IDW_PANE_FIRST + AMT_COM_VIEW, NULL);
+
+	m_pMainUnloaderView = new CManiUnloaderView;
+	m_pMainUnloaderView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,AFX_IDW_PANE_FIRST + MAIN_UNLOADER_VIEW, NULL);
+#else
+	theApp.m_pComView = new CComGammaView;
+	theApp.m_pComView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
+		AFX_IDW_PANE_FIRST + GAMMA_COM_VIEW, NULL);
+#endif
+
+	m_pAddrView = new CAddrView;
+	m_pAddrView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
+		AFX_IDW_PANE_FIRST + ADDR_VIEW, NULL);
+
 	return 0;
 }
 
@@ -179,6 +196,10 @@ void CMainFrame::SwitchingView(UINT nID)
 	pOldView->ShowWindow(SW_HIDE);
 	pNewView->ShowWindow(SW_SHOW);
 
+	CDocument *pDoc = GetActiveDocument();
+	pDoc->AddView(pNewView);
+	pDoc->RemoveView(pOldView);
+
 	SetActiveView(pNewView);
 	RecalcLayout();
 
@@ -192,57 +213,6 @@ void CMainFrame::ActivateFrame(int nCmdShow)
 	CFrameWnd::ActivateFrame(nCmdShow);
 
 	m_pDoc = (CAni_Data_Serever_PCDoc *)GetActiveDocument();
-
-	// Create additional views AFTER the document exists so panes are attached to a CDocument
-	// (avoids MFC warning: "Creating a pane with no CDocument.")
-	if (m_pDoc != NULL)
-	{
-		CCreateContext context;
-		ZeroMemory(&context, sizeof(context));
-		context.m_pCurrentDoc = m_pDoc;
-		context.m_pCurrentFrame = this;
-		context.m_pLastView = m_pMainView;
-
-#if _SYSTEM_AMTAFT_
-		if (theApp.m_pComView == NULL)
-		{
-			theApp.m_pComView = new CComView;
-			if (!theApp.m_pComView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
-				AFX_IDW_PANE_FIRST + AMT_COM_VIEW, &context))
-			{
-				TRACE(_T("[CMainFrame] Create ComView failed. GetLastError=0x%08lX\n"), ::GetLastError());
-			}
-		}
-		if (m_pMainUnloaderView == NULL)
-		{
-			m_pMainUnloaderView = new CManiUnloaderView;
-			if (!m_pMainUnloaderView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
-				AFX_IDW_PANE_FIRST + MAIN_UNLOADER_VIEW, &context))
-			{
-				TRACE(_T("[CMainFrame] Create MainUnloaderView failed. GetLastError=0x%08lX\n"), ::GetLastError());
-			}
-		}
-#else
-		if (theApp.m_pComView == NULL)
-		{
-			theApp.m_pComView = new CComGammaView;
-			if (!theApp.m_pComView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
-				AFX_IDW_PANE_FIRST + GAMMA_COM_VIEW, &context))
-			{
-				TRACE(_T("[CMainFrame] Create ComGammaView failed. GetLastError=0x%08lX\n"), ::GetLastError());
-			}
-		}
-#endif
-
-		if (m_pAddrView == NULL)
-		{
-			m_pAddrView = new CAddrView;
-			if (!m_pAddrView->Create(NULL, NULL, AFX_WS_DEFAULT_VIEW, rectDefault, this,
-				AFX_IDW_PANE_FIRST + ADDR_VIEW, &context))
-			{
-				TRACE(_T("[CMainFrame] Create AddrView failed. GetLastError=0x%08lX\n"), ::GetLastError());
-			}
-		}
-	}
+	CFrameWnd::ActivateFrame(nCmdShow);
 
 }

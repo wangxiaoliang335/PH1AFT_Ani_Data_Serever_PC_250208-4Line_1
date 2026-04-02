@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -60,14 +60,22 @@ void CPgIndex::ThreadRun()
 		//	continue;
 
 		if (theApp.m_PlcConectStatus == FALSE)
+		{
+			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] PLC Connect Status = FALSE, Skip Loop"), m_strIndexName));
 			continue;
+		}
 
+		//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, FALSE);  //test
 		if (theApp.m_PgConectStatus[PgServer_1] || theApp.m_PgPassMode)
 		{
 			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AZoneContactPlcSend + m_iZoneNum, OffSet_0))
+			{
 				ZonePanelCheck(ContactPanelCheck);
+			}
 			else
+			{
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, FALSE);
+			}
 
 
 			if (theApp.m_TpConectStatus || theApp.m_TpPassMode)
@@ -353,17 +361,38 @@ void CPgIndex::ZonePanelCheck(int iNum)
 		}
 
 		if (strPanel.IsEmpty())
+		{
 			strPanel = strFpcID;
+			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel IsEmpty, Use strFpcID = %s"), m_strIndexName, ii + 1, strFpcID));
+		}
+		else
+		{
+			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel = %s, strFpcID = %s"), m_strIndexName, ii + 1, strPanel, strFpcID));
+		}
 
 		if (strFpcID.IsEmpty() == FALSE)
 		{
+			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsNotEmpty, Execute PanelCheck Type=%d"), m_strIndexName, ii + 1, iNum));
 			switch (iNum)
 			{
-			case ContactPanelCheck: theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, TRUE); break;
-			case TouchPanelCheck: theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneTouchPcReceiver + m_iZoneNum, OffSet_0, TRUE); break;
-			case PreGammaPanelCheck: theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_PreGammaPcReceiver, OffSet_0, TRUE); break;
+			case ContactPanelCheck: 
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ContactPanelCheck Complete, Set AZoneContactPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, TRUE); 
+				break;
+			case TouchPanelCheck: 
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] TouchPanelCheck Complete, Set AZoneTouchPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneTouchPcReceiver + m_iZoneNum, OffSet_0, TRUE); 
+				break;
+			case PreGammaPanelCheck: 
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] PreGammaPanelCheck Complete, Set PreGammaPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_PreGammaPcReceiver, OffSet_0, TRUE); 
+				break;
 			}
 			break;
+		}
+		else
+		{
+			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsEmpty, Skip PanelCheck"), m_strIndexName, ii + 1));
 		}
 	}
 }
@@ -399,22 +428,31 @@ void CPgIndex::ZoneContactOn(int Num)
 
 	if (strFpcID.IsEmpty())
 	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOn Ch %d: strFpcID IsEmpty, PanelTestStart=%d"), m_strIndexName, iChNum, theApp.m_PanelTestStart));
 		if (theApp.m_PanelTestStart)
 		{
 			strPanel.Format(_T("TEST%d"), Num);
 			strFpcID.Format(_T("TEST%d"), Num);
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOn Ch %d: Use TEST PanelID=%s, FpcID=%s"), m_strIndexName, iChNum, strPanel, strFpcID));
 		}
 		else
 		{
 			theApp.m_pEqIf->m_pMNetH->SetWordResultOffSet(eWordType_AZoneContactOnResult + m_iZoneNum, Num, &m_codePlcSendReceiverError);
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactOnEnd + m_iZoneNum, Num, TRUE);
-			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact On No Panel ID"), m_strIndexName, iChNum));
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOn Ch %d Contact On No Panel ID, Return"), m_strIndexName, iChNum));
 			return;
 		}
 	}
 
 	if (strPanel.IsEmpty())
+	{
 		strPanel = strFpcID;
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOn Ch %d: strPanel IsEmpty, Use strFpcID=%s"), m_strIndexName, iChNum, strFpcID));
+	}
+	else
+	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOn Ch %d: strPanel=%s, strFpcID=%s"), m_strIndexName, iChNum, strPanel, strFpcID));
+	}
 
 
 	theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact On Start Panel [%s][%s]"), m_strIndexName, iChNum, strPanel, strFpcID));
@@ -479,22 +517,31 @@ void CPgIndex::ZoneContactOff(int Num)
 
 	if (strFpcID.IsEmpty())
 	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOff Ch %d: strFpcID IsEmpty, PanelTestStart=%d"), m_strIndexName, iChNum, theApp.m_PanelTestStart));
 		if (theApp.m_PanelTestStart)
 		{
 			strPanel.Format(_T("TEST%d"), Num);
 			strFpcID.Format(_T("TEST%d"), Num);
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOff Ch %d: Use TEST PanelID=%s, FpcID=%s"), m_strIndexName, iChNum, strPanel, strFpcID));
 		}
 		else
 		{
 			theApp.m_pEqIf->m_pMNetH->SetWordResultOffSet(eWordType_AZoneContactOnResult + m_iZoneNum, Num, &m_codePlcSendReceiverError);
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactOffEnd + m_iZoneNum, Num, TRUE);
-			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact Off No Panel ID"), m_strIndexName, iChNum));
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOff Ch %d Contact Off No Panel ID, Return"), m_strIndexName, iChNum));
 			return;
 		}
 	}
 
 	if (strPanel.IsEmpty())
+	{
 		strPanel = strFpcID;
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOff Ch %d: strPanel IsEmpty, Use strFpcID=%s"), m_strIndexName, iChNum, strFpcID));
+	}
+	else
+	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZoneContactOff Ch %d: strPanel=%s, strFpcID=%s"), m_strIndexName, iChNum, strPanel, strFpcID));
+	}
 
 	theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Panel Contact Off Start"), m_strIndexName, iChNum));
 
@@ -527,23 +574,31 @@ void CPgIndex::ZonePreGamma(int Num)
 	
 	if (strFpcID.IsEmpty())
 	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZonePreGamma Ch %d: strFpcID IsEmpty, PanelTestStart=%d"), PG_IndexName[indexNum], iChNum, theApp.m_PanelTestStart));
 		if (theApp.m_PanelTestStart)
 		{
 			strPanel.Format(_T("TEST%d"), Num);
 			strFpcID.Format(_T("TEST%d"), Num);
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZonePreGamma Ch %d: Use TEST PanelID=%s, FpcID=%s"), PG_IndexName[indexNum], iChNum, strPanel, strFpcID));
 		}
 		else
 		{
 			theApp.m_pEqIf->m_pMNetH->SetWordResultOffSet(eWordType_PreGammaResult1, Num, &m_codePlcSendReceiverError);
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_PreGammaEnd1, Num, TRUE);
-			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d PreGamma No Panel ID"), PG_IndexName[indexNum], iChNum));
-
+			theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZonePreGamma Ch %d PreGamma No Panel ID, Return"), PG_IndexName[indexNum], iChNum));
 			return;
 		}
 	}
 
 	if (strPanel.IsEmpty())
+	{
 		strPanel = strFpcID;
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZonePreGamma Ch %d: strPanel IsEmpty, Use strFpcID=%s"), PG_IndexName[indexNum], iChNum, strFpcID));
+	}
+	else
+	{
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] ZonePreGamma Ch %d: strPanel=%s, strFpcID=%s"), PG_IndexName[indexNum], iChNum, strPanel, strFpcID));
+	}
 
 	theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d PreGamma Start Panel [%s][%s]"), PG_IndexName[indexNum], iChNum, strPanel, strFpcID));
 
@@ -602,22 +657,31 @@ void CPgIndex::ZoneTouchInspection(int Num)
 
 	if (strFpcID.IsEmpty())
 	{
+		theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] ZoneTouch Ch %d: strFpcID IsEmpty, PanelTestStart=%d"), m_strIndexName, iChNum + 1, theApp.m_PanelTestStart));
 		if (theApp.m_PanelTestStart)
 		{
 			strPanel.Format(_T("TEST%d"), Num);
 			strFpcID.Format(_T("TEST%d"), Num);
+			theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] ZoneTouch Ch %d: Use TEST PanelID=%s, FpcID=%s"), m_strIndexName, iChNum + 1, strPanel, strFpcID));
 		}
 		else
 		{
 			theApp.m_pEqIf->m_pMNetH->SetWordResultOffSet(eWordType_AZoneTouchResult + m_iZoneNum, Num, &m_codePlcSendReceiverError);
 			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneTouchInspectionEnd + m_iZoneNum, Num, TRUE);
-			theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d TP No Panel ID"), m_strIndexName, iChNum + 1));
+			theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] ZoneTouch Ch %d TP No Panel ID, Return"), m_strIndexName, iChNum + 1));
 			return;
 		}
 	}
 
 	if (strPanel.IsEmpty())
+	{
 		strPanel = strFpcID;
+		theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] ZoneTouch Ch %d: strPanel IsEmpty, Use strFpcID=%s"), m_strIndexName, iChNum + 1, strFpcID));
+	}
+	else
+	{
+		theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] ZoneTouch Ch %d: strPanel=%s, strFpcID=%s"), m_strIndexName, iChNum + 1, strPanel, strFpcID));
+	}
 	
 	theApp.m_TpSocketManager.TpLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d TP Start Panel [%s][%s]"), m_strIndexName, iChNum + 1, strPanel, strFpcID));
 	PgVecAdd(strPanel, strFpcID, Num, m_iZoneNum, PG_TOUCH, PGTPTimer, iChNum + 1);

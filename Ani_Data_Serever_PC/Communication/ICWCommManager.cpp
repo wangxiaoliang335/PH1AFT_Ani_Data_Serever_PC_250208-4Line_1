@@ -23,17 +23,30 @@ CICWCommManager::CICWCommManager()
     , m_cbFinishFN(nullptr)
     , m_cbHeartBeat(nullptr)
     , m_cbGetVersion(nullptr)
+    , m_bAutoReconnectThreadRunning(FALSE)
+    , m_nReconnectAttempts(0)
+    , m_hReconnectThread(NULL)
+    , m_hReconnectQuitEvent(NULL)
 {
     InitializeCriticalSection(&m_csRecv);
     InitializeCriticalSection(&m_csSend);
+    InitializeCriticalSection(&m_csReconnect);
+    m_hReconnectQuitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 CICWCommManager::~CICWCommManager()
 {
-    Disconnect();  // 先断开客户端连接
-    StopServer();   // 再停止服务器
+    StopAutoReconnect();  // 先停止自动重连
+    Disconnect();         // 断开客户端连接
+    StopServer();         // 再停止服务器
     DeleteCriticalSection(&m_csRecv);
     DeleteCriticalSection(&m_csSend);
+    DeleteCriticalSection(&m_csReconnect);
+    if (m_hReconnectQuitEvent != NULL)
+    {
+        CloseHandle(m_hReconnectQuitEvent);
+        m_hReconnectQuitEvent = NULL;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,6 +119,9 @@ BOOL CICWCommManager::ConnectToServer(LPCTSTR strIP, LPCTSTR strPort)
     m_strServerPort = strPort;
     m_bClientMode = TRUE;
     
+    // 启用 Melsec 模拟模式，确保 Socket 连接正常
+    m_bMelsecSimulaion = TRUE;
+    
     // 创建客户端Socket并连接
     // ConnectTo(strDestination, strServiceName, nFamily, nType)
     // - strDestination: 服务器IP地址
@@ -116,6 +132,10 @@ BOOL CICWCommManager::ConnectToServer(LPCTSTR strIP, LPCTSTR strPort)
     {
         TRACE(_T("ICWCommManager: Failed to connect to %s:%s\n"), strIP, strPort);
         m_bConnected = FALSE;
+        
+        // 连接失败时也启动自动重连
+        TRACE(_T("ICWCommManager: 连接失败，启动自动重连机制\n"));
+        StartAutoReconnect();
         return FALSE;
     }
     
@@ -317,6 +337,7 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
         
     case EVT_CONDROP:
         TRACE(_T("ICWCommManager: Client disconnected\n"));
+        m_bConnected = FALSE;
         if (m_hParentWnd)
         {
             ::PostMessage(m_hParentWnd, WM_ICW_DISCONNECTED, 0, 0);
@@ -325,6 +346,13 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
         EnterCriticalSection(&m_csRecv);
         m_strRecvBuffer.Empty();
         LeaveCriticalSection(&m_csRecv);
+        
+        // 自动重连（仅在客户端模式下）
+        if (m_bClientMode && !m_strServerIP.IsEmpty() && !m_strServerPort.IsEmpty())
+        {
+            TRACE(_T("ICWCommManager: 客户端模式断线，启动自动重连\n"));
+            StartAutoReconnect();
+        }
         break;
         
     case EVT_CONFAILURE:
@@ -470,5 +498,191 @@ void CICWCommManager::ProcessMessage(const CString& strMsg)
     }
     
     TRACE(_T("ICWCommManager: Unknown message: %s\n"), strTrimmed);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 自动重连线程函数
+///////////////////////////////////////////////////////////////////////////////
+unsigned int WINAPI CICWCommManager::ReconnectThreadProc(LPVOID lpParam)
+{
+    CICWCommManager* pThis = static_cast<CICWCommManager*>(lpParam);
+    if (!pThis)
+        return 0;
+
+    TRACE(_T("ICWCommManager: Reconnect thread started\n"));
+    
+    while (TRUE)
+    {
+        // 检查退出事件
+        DWORD dwWait = WaitForSingleObject(pThis->m_hReconnectQuitEvent, 0);
+        if (dwWait == WAIT_OBJECT_0)
+        {
+            TRACE(_T("ICWCommManager: Reconnect thread收到退出信号\n"));
+            break;
+        }
+
+        // 检查是否已连接
+        if (pThis->m_bConnected)
+        {
+            TRACE(_T("ICWCommManager: 已连接到服务器，退出重连循环\n"));
+            break;
+        }
+
+        // 检查最大重连次数
+        if (ICW_MAX_RECONNECT_ATTEMPTS > 0 && pThis->m_nReconnectAttempts >= ICW_MAX_RECONNECT_ATTEMPTS)
+        {
+            TRACE(_T("ICWCommManager: 达到最大重连次数 %d，停止重连\n"), ICW_MAX_RECONNECT_ATTEMPTS);
+            break;
+        }
+
+        pThis->m_nReconnectAttempts++;
+        
+        // 通知状态变化
+        if (pThis->m_cbReconnectStatus)
+        {
+            pThis->m_cbReconnectStatus(TRUE, pThis->m_nReconnectAttempts);
+        }
+
+        TRACE(_T("ICWCommManager: 尝试重连 [%d] %s:%s\n"), 
+            pThis->m_nReconnectAttempts, pThis->m_strServerIP, pThis->m_strServerPort);
+
+        // 执行重连
+        BOOL bReconnected = pThis->ReconnectNow();
+
+        if (bReconnected)
+        {
+            TRACE(_T("ICWCommManager: 重连成功!\n"));
+            if (pThis->m_cbReconnectStatus)
+            {
+                pThis->m_cbReconnectStatus(FALSE, 0);  // 重连成功，停止重连状态
+            }
+            break;
+        }
+        else
+        {
+            TRACE(_T("ICWCommManager: 重连失败，%d ms后再次尝试\n"), ICW_RECONNECT_INTERVAL_MS);
+        }
+
+        // 等待间隔
+        dwWait = WaitForSingleObject(pThis->m_hReconnectQuitEvent, ICW_RECONNECT_INTERVAL_MS);
+        if (dwWait == WAIT_OBJECT_0)
+        {
+            TRACE(_T("ICWCommManager: 重连等待期间收到退出信号\n"));
+            break;
+        }
+    }
+
+    pThis->m_bAutoReconnectThreadRunning = FALSE;
+    TRACE(_T("ICWCommManager: Reconnect thread exited\n"));
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 执行一次重连
+///////////////////////////////////////////////////////////////////////////////
+BOOL CICWCommManager::ReconnectNow()
+{
+    if (m_strServerIP.IsEmpty() || m_strServerPort.IsEmpty())
+    {
+        TRACE(_T("ICWCommManager: ReconnectNow - 服务器信息为空，跳过\n"));
+        return FALSE;
+    }
+
+    // 确保之前的连接已清理
+    Disconnect();
+
+    // 重新连接
+    if (!ConnectTo(m_strServerIP, m_strServerPort, AF_INET, SOCK_STREAM))
+    {
+        TRACE(_T("ICWCommManager: ReconnectNow - ConnectTo 失败\n"));
+        return FALSE;
+    }
+
+    // 启动通信监听
+    if (!WatchComm())
+    {
+        TRACE(_T("ICWCommManager: ReconnectNow - WatchComm 失败\n"));
+        ShutdownConnection((SOCKET)m_hComm);
+        m_hComm = NULL;
+        m_bConnected = FALSE;
+        return FALSE;
+    }
+
+    m_bConnected = TRUE;
+    m_strRecvBuffer.Empty();
+
+    TRACE(_T("ICWCommManager: ReconnectNow - 成功重连到 %s:%s\n"), m_strServerIP, m_strServerPort);
+
+    // 通知父窗口
+    if (m_hParentWnd)
+    {
+        ::PostMessage(m_hParentWnd, WM_ICW_CONNECTED, 0, 0);
+    }
+
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 启动自动重连
+///////////////////////////////////////////////////////////////////////////////
+void CICWCommManager::StartAutoReconnect()
+{
+    if (!m_bClientMode)
+    {
+        TRACE(_T("ICWCommManager: StartAutoReconnect - 非客户端模式，不启动重连\n"));
+        return;
+    }
+
+    if (m_bAutoReconnectThreadRunning)
+    {
+        TRACE(_T("ICWCommManager: StartAutoReconnect - 重连线程已在运行\n"));
+        return;
+    }
+
+    EnterCriticalSection(&m_csReconnect);
+    m_bAutoReconnectThreadRunning = TRUE;
+    m_nReconnectAttempts = 0;
+    ResetEvent(m_hReconnectQuitEvent);
+    LeaveCriticalSection(&m_csReconnect);
+
+    // 启动重连线程
+    unsigned int nThreadID = 0;
+    m_hReconnectThread = (HANDLE)_beginthreadex(NULL, 0, &ReconnectThreadProc, this, 0, &nThreadID);
+    
+    if (m_hReconnectThread == NULL)
+    {
+        TRACE(_T("ICWCommManager: StartAutoReconnect - _beginthreadex 失败\n"));
+        m_bAutoReconnectThreadRunning = FALSE;
+        return;
+    }
+
+    TRACE(_T("ICWCommManager: StartAutoReconnect - 重连线程已启动\n"));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 停止自动重连
+///////////////////////////////////////////////////////////////////////////////
+void CICWCommManager::StopAutoReconnect()
+{
+    if (!m_bAutoReconnectThreadRunning)
+        return;
+
+    TRACE(_T("ICWCommManager: StopAutoReconnect - 停止重连线程\n"));
+
+    // 设置退出事件
+    SetEvent(m_hReconnectQuitEvent);
+
+    // 等待线程结束
+    if (m_hReconnectThread != NULL)
+    {
+        WaitForSingleObject(m_hReconnectThread, 5000);  // 等待最多5秒
+        CloseHandle(m_hReconnectThread);
+        m_hReconnectThread = NULL;
+    }
+
+    m_bAutoReconnectThreadRunning = FALSE;
+    m_nReconnectAttempts = 0;
+
+    TRACE(_T("ICWCommManager: StopAutoReconnect - 完成\n"));
 }
 

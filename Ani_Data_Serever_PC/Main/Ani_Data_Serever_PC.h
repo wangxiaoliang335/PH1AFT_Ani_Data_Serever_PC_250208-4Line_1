@@ -1,4 +1,4 @@
-
+﻿
 // Ani_Data_Serever_PCApp.h : CAni_Data_Serever_PCApp 览侩 橇肺弊伐俊 措茄 林 庆歹 颇老
 //
 #pragma once
@@ -340,6 +340,9 @@ public:
 	CString m_strDBName;
 	CString m_strDBUser;
 	CString m_strDBPassword;
+
+	// 自动测试模式配置 (LIGHTING.AUTO_TEST)
+	int m_iAutoTestMode;
 
 	CString m_strDefectTitleName[DefectTitleMaxCount];
 	BOOL m_bContact[PG_MAX_CH];
