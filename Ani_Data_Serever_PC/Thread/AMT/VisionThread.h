@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Ani_Data_Serever_PC.h"
 
@@ -46,6 +46,32 @@ public:
 	// ICW通信回调函数
 	void OnICWStart(const ICW_StartInfo& startInfo);
 	void OnICWSnapFN();
+	void OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo);
+
+	// 发送 ICW Start$ 消息（包含所有治具信息）
+	// bSimulation: TRUE=模拟模式直接发送所有槽位，FALSE=从PLC读取实际槽位状态
+	void SendICWStartMessage(BOOL bSimulation = FALSE);
+
+	// 检查 ICW Start$ 是否正在等待响应（用于防止重复发送）
+	BOOL IsICWStartInProgress() const
+	{
+		for (int i = 0; i < 4; i++)
+		{
+			if (m_bICWStartSent[i])
+				return TRUE;
+		}
+		return FALSE;
+	}
+
+	// 设置 ICW Start$ 发送标志（用于模拟测试模式）
+	void SetICWStartSent(BOOL bSent)
+	{
+		for (int i = 0; i < 4; i++)
+			m_bICWStartSent[i] = bSent;
+	}
+
+	// ICW Start$ 消息发送标志（public以便外部访问）
+	BOOL m_bICWStartSent[4];
 
 	virtual void OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount);
 	virtual void OnEvent(UINT uEvent, LPVOID lpvData);
@@ -79,12 +105,6 @@ private:
 
 	BOOL m_bAutoFocusStart[MaxCamCount];
 	BOOL m_bAutoFocusStartFlag;
-
-	// ICW Start$ 消息发送标志（避免重复发送）
-	BOOL m_bICWStartSent[4];
-
-	// 发送 ICW Start$ 消息（包含所有治具信息）
-	void SendICWStartMessage();
 
 };
 
