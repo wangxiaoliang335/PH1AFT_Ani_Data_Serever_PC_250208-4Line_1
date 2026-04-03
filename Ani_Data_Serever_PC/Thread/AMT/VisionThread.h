@@ -23,7 +23,8 @@ public:
 	BOOL CreateTask();
 	void CloseTask();
 	void RemoveClient();
-	void VisionFirstCheckMethod(int Num);
+	// 旧的 Vision PC 初始化检查（已废弃，现使用 ICW）
+	//void VisionFirstCheckMethod(int Num);
 	void VisionCheckMethod(int Num);
 	void VisionInspectionMethod(int Num, int panelNum);
 	void ParsingGrabEnd(int Num, CString strContents);

@@ -1024,13 +1024,19 @@ void CPlcThread::ThreadRun()
 			}
 			else
 			{
-				//°Ë»ç PC ÁØºñ È®ÀÎ	
-				if (theApp.m_VisionPCStatus[0] && theApp.m_VisionPCStatus[1])
+				// ICW 6501端口连接状态检查
+				BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
+				LogWrite(CStringSupport::FormatString(_T("[VisionReady] AOIPassMode=%d, ICWConnected=%d"),
+					theApp.m_AOIPassMode, bICWConnected));
+
+				if (bICWConnected)
 				{
+					LogWrite(_T("[VisionReady] ICW Connected - Set VisionReady=TRUE"));
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
 				}
 				else
 				{
+					LogWrite(_T("[VisionReady] ICW Disconnected - Reset VisionReady and all Vision signals to FALSE"));
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, 0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1, OffSet_0, FALSE);
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd2, OffSet_0, FALSE);
@@ -1476,12 +1482,18 @@ void CPlcThread::ModelCreateChange(CString sendMsg, int iCommand)
 
 			break;
 		case _MODEL_CHECK_VISION1:
-			if (theApp.m_VisionConectStatus[PC1] == TRUE)
-				theApp.m_VisionSocketManager[PC1].SocketSendto(PC1, sendMsg, iCommand);
-
-			if (theApp.m_VisionConectStatus[PC2] == TRUE)
-				theApp.m_VisionSocketManager[PC2].SocketSendto(PC2, sendMsg, iCommand);
-
+			// ICW 6501端口连接状态检查
+			if (theApp.m_ICWCommManager.IsConnected())
+			{
+				LogWrite(_T("[ModelCheck] ICW Connected - Vision model check via ICW protocol"));
+				// ICW模式下模型检查通过ICW协议处理（如果有对应的消息类型）
+				// 目前ICW主要处理Start$/SnapFN$/FN$等检测相关消息
+				theApp.m_PlcLog->LOG_INFO(_T("[ModelCheck] ICW mode - model check command not implemented, use Start$ for inspection"));
+			}
+			else
+			{
+				LogWrite(_T("[ModelCheck] ICW Disconnected - Cannot send model check command"));
+			}
 			break;
 		case _MODEL_CHECK_OPERATOR_VIEW:
 			if (theApp.m_OpvConectStatus[CH_1] == TRUE)

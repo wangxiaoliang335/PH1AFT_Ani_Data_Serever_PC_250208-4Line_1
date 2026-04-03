@@ -113,11 +113,12 @@ void CVisionThread::ThreadRun()
 				m_bFirstStatus = FALSE;
 				time_check.SetCheckTime(60000);
 				time_check.StartTimer();
-				for (int ii = 0; ii < PCMaxCount; ii++)
-				{
-					VisionFirstCheckMethod(ii);
-					theApp.m_VisionPCStatus[ii] = TRUE;
-				}
+				// 旧的 Vision PC 初始化检查（已废弃，现使用 ICW）
+				//for (int ii = 0; ii < PCMaxCount; ii++)
+				//{
+				//	VisionFirstCheckMethod(ii);
+				//	theApp.m_VisionPCStatus[ii] = TRUE;
+				//}
 
 				for (int jj = 0; jj < PanelMaxCount; jj++)
 					m_bStartVision[jj] = FALSE;
@@ -161,13 +162,17 @@ void CVisionThread::ThreadRun()
 			{
 				m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + ii);
 
-				if (m_bStartFlag == FALSE)
+			if (m_bStartFlag == FALSE)
+			{
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
+				LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=FALSE, Reset VisionResult=%d, GrabEnd=FALSE, End=FALSE"),
+					ii + 1, m_codeReset), 0);
+			}
+				else
 				{
-					LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=FALSE, Reset VisionResult=%d, GrabEnd=FALSE, End=FALSE"),
-						ii + 1, m_codeReset), 0);
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
+					LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=TRUE"), ii + 1), 0);
 				}
 
 				if (m_bStartVision[ii] == !m_bStartFlag)
@@ -190,64 +195,65 @@ void CVisionThread::ThreadRun()
 				}
 			}
 
-			for (int ii = 0; ii < MaxCamCount; ii++)
-			{
-				m_bAutoFocusStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusEnd1 + ii, OffSet_0);
+			//for (int ii = 0; ii < MaxCamCount; ii++)
+			//{
+			//	m_bAutoFocusStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusEnd1 + ii, OffSet_0);
 
-				if (m_bAutoFocusStartFlag == TRUE)
-				{
-					LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: GetAutoFocusData, Set AutoFocusSave=FALSE, AutoFocusStart=FALSE"), ii + 1), 0);
-					theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
-				}
+			//	if (m_bAutoFocusStartFlag == TRUE)
+			//	{
+			//		LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: GetAutoFocusData, Set AutoFocusSave=FALSE, AutoFocusStart=FALSE"), ii + 1), 0);
+			//		theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
+			//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
+			//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
+			//	}
 
-				if (m_bAutoFocusStart[ii] == !m_bAutoFocusStartFlag)
-				{
-					m_bAutoFocusStart[ii] = m_bAutoFocusStartFlag;
-					LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d End Flag [%s]"), ii + 1, m_bAutoFocusStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")), 0);
+			//	if (m_bAutoFocusStart[ii] == !m_bAutoFocusStartFlag)
+			//	{
+			//		m_bAutoFocusStart[ii] = m_bAutoFocusStartFlag;
+			//		LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d End Flag [%s]"), ii + 1, m_bAutoFocusStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")), 0);
 
-					if (m_bAutoFocusStartFlag == TRUE)
-					{
-						if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0))
-						{
-							//save
-							LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Save Mode, SocketSend GOOD, MC_FOCUS_SAVE_POS_DONE"), ii + 1), 0);
-							theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
-							theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
+			//		if (m_bAutoFocusStartFlag == TRUE)
+			//		{
+			//			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0))
+			//			{
+			//				//save
+			//				LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Save Mode, SocketSend GOOD, MC_FOCUS_SAVE_POS_DONE"), ii + 1), 0);
+			//				theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_SAVE_POS_DONE);
+			//				theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
+			//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
+			//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
 
-							LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Save Success"), ii + 1), ii);
-						}
-						else
-						{
-							//axis Move
-							theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
-							if (m_AutoFocusPosition == 1)
-							{
-								LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Axis Move Mode, Position=%d, SocketSend GOOD, MC_Z_MOVE_DONE"), ii + 1, m_AutoFocusPosition), 0);
-								theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_Z_MOVE_DONE);
-							}
-							else
-							{
-								LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Axis Move Mode, Position=%d, SocketSend GOOD, MC_FOCUS_MOVE_DONE"), ii + 1, m_AutoFocusPosition), 0);
-								theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_MOVE_DONE);
-							}
+			//				LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Save Success"), ii + 1), ii);
+			//			}
+			//			else
+			//			{
+			//				//axis Move
+			//				theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_AutoFocusMoter1, &m_AutoFocusPosition);
+			//				if (m_AutoFocusPosition == 1)
+			//				{
+			//					LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Axis Move Mode, Position=%d, SocketSend GOOD, MC_Z_MOVE_DONE"), ii + 1, m_AutoFocusPosition), 0);
+			//					theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_Z_MOVE_DONE);
+			//				}
+			//				else
+			//				{
+			//					LogWrite(CStringSupport::FormatString(_T("[AutoFocus] Cam %d: Axis Move Mode, Position=%d, SocketSend GOOD, MC_FOCUS_MOVE_DONE"), ii + 1, m_AutoFocusPosition), 0);
+			//					theApp.m_VisionSocketManager->SocketSendto(ii, _T("GOOD"), MC_FOCUS_MOVE_DONE);
+			//				}
 
-							theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
-							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
+			//				theApp.m_pEqIf->m_pMNetH->SetAutoFocusData(eWordType_AutoFocusMoter1, &pAutoFocusData);
+			//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusSave1 + ii, OffSet_0, FALSE);
+			//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AutoFocusStart1 + ii, OffSet_0, FALSE);
 
-							LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Axis Move Success"), ii + 1), ii);
-						}
-					}
-				}
-			}
+			//				LogWrite(CStringSupport::FormatString(_T("[CAM_%d] Auto Focus Axis Move Success"), ii + 1), ii);
+			//			}
+			//		}
+			//	}
+			//}
 			
 			for (auto &InspResult : theApp.m_lastInspResultVec)
 			{
-				if (InspResult.m_LastCheck == TRUE)
+				// 检查超时：检测已开始但未完成
+				if (InspResult.m_bInspStart == TRUE && InspResult.m_bResult == FALSE)
 				{
 					if (InspResult.time_check.IsTimeOver())
 					{
@@ -262,26 +268,6 @@ void CVisionThread::ThreadRun()
 						InspResult.m_bResult = TRUE;
 						theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("[PC : %d] AOI [%s] Time out"), InspResult.m_iPCNum, InspResult.m_cellId));
 					}
-				}
-				else if (InspResult.m_bInspStart == TRUE)
-				{
-					//// 旧的 Vision 超时发送 MC_INSPECTION_END (已废弃，现使用 ICW)
-					//if (InspResult.time_check.IsTimeOver())
-					//{
-					//	LogWrite(CStringSupport::FormatString(_T("[Vision] PC=%d Panel=%d Last Grab Timeout! SocketSend MC_INSPECTION_END"),
-					//		InspResult.m_iPCNum, InspResult.m_iPanelNum), 0);
-					//	CString sendMsg;
-					//	sendMsg.Format(_T("%d,%s"), MC_INSPECTION_END, InspResult.m_cellId);
-					//	SocketSendto(InspResult.m_iPCNum, sendMsg, MC_INSPECTION_END);
-					//	LogWrite(CStringSupport::FormatString(_T("Vision %d Inspection Last Request Start")), InspResult.m_iPCNum);
-					//	InspResult.m_LastCheck = TRUE;
-					//	if (theApp.m_iTimer[VisionLastGrabTimer] == 0)
-					//		InspResult.time_check.SetCheckTime(1000);
-					//	else
-					//		InspResult.time_check.SetCheckTime(theApp.m_iTimer[VisionLastGrabTimer] * 1000);
-
-					//	InspResult.time_check.StartTimer();
-					//}
 				}
 
 				if (InspResult.m_bResult == TRUE && theApp.m_bVisionDeleteFlag == TRUE)
@@ -471,46 +457,47 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	}
 }
 
-void CVisionThread::VisionFirstCheckMethod(int Num)
-{
-	BOOL bModelCreate, bModelChange;
-	//??? ??????????? IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ???(MC_MODEL)
-	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
-	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
-	Delay(200, TRUE);
-
-	strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_PCTIME, GetDateString4());
-	SocketSendto(Num, strCommand, MC_PCTIME);
-	Delay(200, TRUE);
-
-	if (Num == PC1)
-	{
-		bModelCreate = theApp.m_CreateModelVision1;
-		bModelChange = theApp.m_ChangeModelVision1;
-	}
-	else
-	{
-		bModelCreate = theApp.m_CreateModelVision2;
-		bModelChange = theApp.m_ChangeModelVision2;
-	}
-	
-	if (bModelCreate)
-	{
-		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CREATE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-		SocketSendto(Num, strCommand, MC_MODEL_CREATE);
-		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CREATE], strCommand), Num);
-		Delay(200, TRUE);
-	}
-	
-	if (bModelChange)
-	{
-		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-		SocketSendto(Num, strCommand, MC_MODEL_CHANGE);
-		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CHANGE], strCommand), Num);
-		Delay(200, TRUE);
-	}
-
-}
+// 旧的 Vision PC 初始化检查（已废弃，现使用 ICW）
+//void CVisionThread::VisionFirstCheckMethod(int Num)
+//{
+//	BOOL bModelCreate, bModelChange;
+//	//??? ??????????? IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ???(MC_MODEL)
+//	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
+//	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
+//	Delay(200, TRUE);
+//
+//	strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_PCTIME, GetDateString4());
+//	SocketSendto(Num, strCommand, MC_PCTIME);
+//	Delay(200, TRUE);
+//
+//	if (Num == PC1)
+//	{
+//		bModelCreate = theApp.m_CreateModelVision1;
+//		bModelChange = theApp.m_ChangeModelVision1;
+//	}
+//	else
+//	{
+//		bModelCreate = theApp.m_CreateModelVision2;
+//		bModelChange = theApp.m_ChangeModelVision2;
+//	}
+//	
+//	if (bModelCreate)
+//	{
+//		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CREATE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+//		SocketSendto(Num, strCommand, MC_MODEL_CREATE);
+//		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CREATE], strCommand), Num);
+//		Delay(200, TRUE);
+//	}
+//	
+//	if (bModelChange)
+//	{
+//		strCommand = CStringSupport::FormatString(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+//		SocketSendto(Num, strCommand, MC_MODEL_CHANGE);
+//		LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL_CHANGE], strCommand), Num);
+//		Delay(200, TRUE);
+//	}
+//
+//}
 
 void CVisionThread::VisionCheckMethod(int Num)
 {
@@ -585,7 +572,11 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation)
 	}
 	else
 	{
-		// 读取当前4个槽位的Panel数据，判断哪些槽位有产品
+		// 使用 eBitType_VisionStart1 位信号判断治具
+		BOOL startFlags[4] = { FALSE, FALSE, FALSE, FALSE };
+		for (int jj = 0; jj < MAX_JIG; ++jj)
+			startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
+
 		for (int i = 0; i < MAX_JIG; i++)
 		{
 			PanelData pPanelData;
@@ -601,18 +592,18 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation)
 			if (strPanel.IsEmpty())
 				strPanel = strFpcID;
 
-			// 有产品用治具号(01~04)，无产品用00
-			if (!strPanel.IsEmpty())
+			// 使用 startFlags 位信号判断治具：有信号用治具号(01~04)，无信号用00
+			if (startFlags[i] && !strPanel.IsEmpty())
 			{
 				strCurrentJigs += CStringSupport::FormatString(_T("%02d"), i + 1);
-				LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Jig %d has product: Panel=%s, FPC=%s"),
-					i + 1, strPanel, strFpcID), 0);
 			}
 			else
 			{
 				strCurrentJigs += _T("00");
-				LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Jig %d no product"), i + 1), 0);
 			}
+
+			LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Jig %d: startFlag=%d, strPanel=%s, strFpcID=%s"),
+				i + 1, startFlags[i], strPanel, strFpcID), 0);
 
 			// 最大治具固定为 01,02,03,04
 			strMaxJigs += CStringSupport::FormatString(_T("%02d"), i + 1);

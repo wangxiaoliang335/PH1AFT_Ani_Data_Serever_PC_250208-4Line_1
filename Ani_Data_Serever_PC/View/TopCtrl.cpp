@@ -143,8 +143,9 @@ void CTopCtrl::OnTimer(UINT_PTR nIDEvent)
 		
 
 #if _SYSTEM_AMTAFT_
-	m_netWorkIf[NUM_NETWORK_VISION_1].SetValue(theApp.m_VisionConectStatus[PC1]);
-	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_VisionConectStatus[PC2]);
+	// Vision状态改为使用ICW 6501端口连接状态
+	m_netWorkIf[NUM_NETWORK_VISION_1].SetValue(theApp.m_ICWCommManager.IsConnected());
+	m_netWorkIf[NUM_NETWORK_VISION_2].SetValue(theApp.m_ICWCommManager.IsConnected());
 	m_netWorkIf[NUM_NETWORK_VISION_3].SetValue(theApp.m_ICWCommManager.IsConnected());
 
 	m_netWorkIf[NUM_NETWORK_ALIGN].SetValue(m_bAlignFlag);

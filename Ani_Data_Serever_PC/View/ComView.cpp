@@ -443,7 +443,8 @@ void CComView::OnTimer(UINT_PTR nIDEvent)
 		m_ctrlComList.SetItemText(iItemNum, 4, theApp.m_FFUSerialCom->GetLastRequest());
 		iItemNum++;
 
-		BOOL flag = theApp.m_VisionConectStatus[PC1] && theApp.m_VisionConectStatus[PC2];
+		// Vision状态改为使用ICW 6501端口连接状态
+		BOOL flag = theApp.m_ICWCommManager.IsConnected();
 		UpdateStateButton(flag, &m_VisionState);
 
 		flag = theApp.m_ViewingAngleConectStatus[PanelNum1] && theApp.m_ViewingAngleConectStatus[PanelNum2] && 
@@ -528,31 +529,13 @@ void CComView::OnClickSendVisionCommand()
 	int icommand = m_cmbVisionCommand.GetCurSel();
 	int iPcNum = m_cmbVisionCount.GetCurSel();
 
-	if (iPcNum == PC1)
+	// ICW 6501端口连接状态检查
+	BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
+	if (!bICWConnected)
 	{
-		if (!theApp.m_VisionConectStatus[PC1])
-		{
-			theApp.getMsgBox(MS_OK, _T("검사PC2 연결 확인하세요."), _T("Vision PC2 Connect Check"), _T("检查PC连接确认"));
-			return;
-		}
+		theApp.getMsgBox(MS_OK, _T("ICW 연결 확인하세요."), _T("ICW Connect Check"), _T("检查ICW连接"));
+		return;
 	}
-	else if (iPcNum == PC2)
-	{
-		if (!theApp.m_VisionConectStatus[PC2])
-		{
-			theApp.getMsgBox(MS_OK, _T("검사 PC1/PC2 연결 확인하세요."), _T("Vision PC1/PC2 Connect Check"), _T("检查PC连接确认"));
-			return;
-		}
-	}
-	else
-	{
-		if (!theApp.m_VisionConectStatus[PC1] || !theApp.m_VisionConectStatus[PC2])
-		{
-			theApp.getMsgBox(MS_OK, _T("검사PC1 연결 확인하세요."), _T("Vision PC1 Connect Check"), _T("检查PC连接确认"));
-			return;
-		}
-	}
-
 
 	if (icommand < 0 || iPcNum < 0){
 		theApp.getMsgBox(MS_OK, _T("Command or PC 번호 선택하세요."), _T("Command or PcNum Choice"), _T("选择命令或者PC编号"));
@@ -563,15 +546,10 @@ void CComView::OnClickSendVisionCommand()
 	GetDlgItemText(IDC_VISION_DATA, strData);
 	sendMsg.Format(_T("%d,%s"), icommand, strData);
 
-	if (iPcNum == PCMaxCount)
-	{
-		theApp.m_VisionThread->SocketSendto(PC1, sendMsg, icommand);
-		theApp.m_VisionThread->SocketSendto(PC2, sendMsg, icommand);
-	}
-	else
-	{
-		theApp.m_VisionThread->SocketSendto(iPcNum, sendMsg, icommand);
-	}
+	// ICW通信模式：手动发送通过ICW协议发送（如果有对应的手动命令接口）
+	// 否则暂时不处理手动命令发送
+	theApp.getMsgBox(MS_OK, _T("ICW模式下手动命令暂不支持."), _T("ICW Mode"), _T("ICW模式"));
+	return;
 }
 
 void CComView::OnClickSendAlignCommand()
