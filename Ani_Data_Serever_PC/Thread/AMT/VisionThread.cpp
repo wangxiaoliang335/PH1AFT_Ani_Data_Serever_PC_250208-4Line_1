@@ -90,6 +90,12 @@ void CVisionThread::ThreadRun()
 
 	LogWrite(_T("[Vision] Thread Started"), 0);
 
+	// ICW 状态变化检测（避免日志刷屏）
+	static BOOL s_bLastICWConnected = FALSE;
+	static int s_iLastAOIPassMode = -1;
+	static DWORD s_dwLastICWLogTime = 0;
+	const DWORD ICW_LOG_INTERVAL_MS = 60000; // 1分钟
+
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
 	{
 		//// 旧的 Vision PC1/PC2 连接状态检查 (已废弃，现使用 ICW 6501端口)
@@ -98,9 +104,19 @@ void CVisionThread::ThreadRun()
 
 		// 6501端口（ICW）连接状态
 		BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
+		int iAOIPassMode = theApp.m_AOIPassMode;
+		DWORD dwCurrentTime = GetTickCount();
 
-		LogWrite(CStringSupport::FormatString(_T("[Vision] ICW Connected=%d, AOIPassMode=%d"),
-			bICWConnected, theApp.m_AOIPassMode), 0);
+		// ICW 状态变化时输出日志（避免刷屏）
+		if (bICWConnected != s_bLastICWConnected || iAOIPassMode != s_iLastAOIPassMode ||
+			(dwCurrentTime - s_dwLastICWLogTime > ICW_LOG_INTERVAL_MS))
+		{
+			LogWrite(CStringSupport::FormatString(_T("[Vision] ICW Connected=%d, AOIPassMode=%d"),
+				bICWConnected, iAOIPassMode), 0);
+			s_bLastICWConnected = bICWConnected;
+			s_iLastAOIPassMode = iAOIPassMode;
+			s_dwLastICWLogTime = dwCurrentTime;
+		}
 
 		//if (theApp.m_bAllPassMode)
 		//	continue;
@@ -147,14 +163,28 @@ void CVisionThread::ThreadRun()
 			//	}
 			//}
 
-			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionPlcSend, 0))
+			// VisionPlcSend 状态变化检测（避免刷屏）
+			static BOOL s_bLastVisionPlcSend = FALSE;
+			BOOL bCurrentVisionPlcSend = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionPlcSend, 0);
+			if (bCurrentVisionPlcSend != s_bLastVisionPlcSend)
 			{
-				LogWrite(_T("[Vision] GetPLC eBitType_VisionPlcSend = TRUE"), 0);
+				if (bCurrentVisionPlcSend)
+				{
+					LogWrite(_T("[Vision] GetPLC eBitType_VisionPlcSend = TRUE"), 0);
+				}
+				else
+				{
+					LogWrite(_T("[Vision] GetPLC eBitType_VisionPlcSend = FALSE, Set eBitType_VisionPcReceiver = FALSE"), 0);
+				}
+				s_bLastVisionPlcSend = bCurrentVisionPlcSend;
+			}
+
+			if (bCurrentVisionPlcSend)
+			{
 				VisionPanelCheck();
 			}
 			else
 			{
-				LogWrite(_T("[Vision] GetPLC eBitType_VisionPlcSend = FALSE, Set eBitType_VisionPcReceiver = FALSE"), 0);
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
 			}
 
@@ -162,16 +192,22 @@ void CVisionThread::ThreadRun()
 			{
 				m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + ii);
 
-			if (m_bStartFlag == FALSE)
-			{
-				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
-				LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=FALSE, Reset VisionResult=%d, GrabEnd=FALSE, End=FALSE"),
-					ii + 1, m_codeReset), 0);
-			}
-				else
+				// Panel StartFlag 状态变化时输出日志（避免刷屏）
+				if (m_bStartFlag == FALSE)
 				{
+					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
+					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
+					// 只在状态从 TRUE 变为 FALSE 时输出日志
+					if (m_bStartVision[ii])
+					{
+						LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=FALSE, Reset VisionResult=%d, GrabEnd=FALSE, End=FALSE"),
+							ii + 1, m_codeReset), 0);
+					}
+				}
+				else if (!m_bStartVision[ii])
+				{
+					// 只在状态从 FALSE 变为 TRUE 时输出日志
 					LogWrite(CStringSupport::FormatString(_T("[Vision] Panel %d: StartFlag=TRUE"), ii + 1), 0);
 				}
 
@@ -187,10 +223,9 @@ void CVisionThread::ThreadRun()
 						theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + ii, &m_codeReset);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + ii, OffSet_0, FALSE);
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
-						//Delay(100);
-						m_iPcNum = ii <= PanelNum2 ? PC1 : PC2;
-						LogWrite(CStringSupport::FormatString(_T("[Vision] Calling VisionInspectionMethod PC=%d, PanelNum=%d"), m_iPcNum, PanelNum1 + ii), 0);
-						VisionInspectionMethod(m_iPcNum, PanelNum1 + ii);
+						// 4-Line 系统使用 ICW 统一通信，无需区分 PC1/PC2
+						LogWrite(CStringSupport::FormatString(_T("[Vision] Calling VisionInspectionMethod Panel=%d"), ii), 0);
+						VisionInspectionMethod(ii, ii);
 					}
 				}
 			}
@@ -257,8 +292,8 @@ void CVisionThread::ThreadRun()
 				{
 					if (InspResult.time_check.IsTimeOver())
 					{
-						LogWrite(CStringSupport::FormatString(_T("[Vision] PC=%d Panel=%d Timeout! Call VisionPLCResult with Code=%d"),
-							InspResult.m_iPCNum, InspResult.m_iPanelNum, m_codeTimeOut), 0);
+						LogWrite(CStringSupport::FormatString(_T("[Vision] Panel=%d Timeout! Call VisionPLCResult with Code=%d"),
+							InspResult.m_iPanelNum, m_codeTimeOut), 0);
 						VisionPLCResult(InspResult.m_iPCNum,
 							InspResult.m_iPanelNum,
 							PLC_ResultValue[m_codeTimeOut],
@@ -294,11 +329,12 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
+	// 旧的 Vision PC Socket 通信已废弃（现使用 ICW 6501端口统一通信）
+	//SockAddrIn addrin;
+	//GetSockName(addrin);
+	//int Num = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
 
-	//????? ???? ??? ?????????? for ?????? ETX ???????? ?????? ???? ??????? ????? ????
+	//???????? ???? ??? ?????????? for ?????? ETX ???????? ?????? ???? ??????? ????? ????
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -309,7 +345,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 	if (responseTokens.GetSize() == 1)
 	{
-		LogWrite(_T("ETX No Message!!!"), Num);
+		//LogWrite(_T("ETX No Message!!!"), Num);
 		return;
 	}
 
@@ -323,7 +359,7 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 		if (iHeader != _STX)
 		{
-			LogWrite(_T("STX No Message!!!"), Num);
+			//LogWrite(_T("STX No Message!!!"), Num);
 			return;
 		}
 
@@ -337,13 +373,14 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 		m_strContents = strParsing.Mid(iFind + 1, strParsing.GetLength());
 
-		m_lastCommand[Num] = VS_PacketNameTable[iCommand];
-		m_lastRequest[Num] = m_strContents;
+		// 旧的 Vision PC Socket 通信已废弃（现使用 ICW）
+		//m_lastCommand[Num] = VS_PacketNameTable[iCommand];
+		//m_lastRequest[Num] = m_strContents;
 
-		if (Num == PC1)
-			theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
-		else
-			theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+		//if (Num == PC1)
+		//	theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+		//else
+		//	theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
 
 		CString sendMsg;
 		switch (iCommand)
@@ -353,8 +390,8 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			//theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount = 0;
 			break;
 		case VS_PCTIME_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_PCTIME_REQUEST")), Num);
-			ParsingPcTimeRequest(Num, m_strContents);			
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_PCTIME_REQUEST")), Num);
+			//ParsingPcTimeRequest(Num, m_strContents);
 			//// 旧的 MC_STATE 发送 (已废弃，现使用 ICW)
 			//sendMsg.Format(_T("%d,%d"), MC_STATE, !theApp.m_PlcThread->m_plcStart);
 			//for (int ii = 0; ii < PCMaxCount; ii++)
@@ -366,91 +403,75 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_STATE"), theApp.m_VisionPCStatus[Num] == TRUE ? _T("Start") : _T("Stop")), Num);
 			break;
 		case VS_MODEL:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL")), Num);
-			ParshingVisionData(Num, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL")), Num);
+			//ParshingVisionData(Num, m_strContents);
 			break;
 		case VS_MODEL_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_REQUEST")), Num);
-			ParsingModelRequest(Num, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_REQUEST")), Num);
+			//ParsingModelRequest(Num, m_strContents);
 			break;
 		case VS_MODEL_CREATE:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CREATE")), Num);
-			if (Num == PC1)
-			{
-				theApp.m_CreateModelVision1 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision1"), theApp.m_CreateModelVision1);
-
-				//// 旧的 MC_MODEL_CHANGE 发送 (已废弃)
-				//if (theApp.m_ChangeModelVision1)
-				//{
-				//	sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-				//	theApp.m_VisionSocketManager[PC1].SocketSendto(PC1, sendMsg, MC_MODEL_CHANGE);
-				//}
-			}
-			else
-			{
-				theApp.m_CreateModelVision2 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision2"), theApp.m_CreateModelVision2);
-
-				//// 旧的 MC_MODEL_CHANGE 发送 (已废弃)
-				//if (theApp.m_ChangeModelVision2)
-				//{
-				//	sendMsg.Format(_T("%d,%s"), MC_MODEL_CHANGE, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-				//	theApp.m_VisionSocketManager[PC2].SocketSendto(PC2, sendMsg, MC_MODEL_CHANGE);
-				//}
-			}
-
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Create Success"), Num));
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CREATE")), Num);
+			// 旧的 Vision PC Socket 通信已废弃
+			//if (Num == PC1)
+			//{
+			//	theApp.m_CreateModelVision1 = FALSE;
+			//	theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision1"), theApp.m_CreateModelVision1);
+			//}
+			//else
+			//{
+			//	theApp.m_CreateModelVision2 = FALSE;
+			//	theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelCreate"), _T("Vision2"), theApp.m_CreateModelVision2);
+			//}
 			break;
 		case VS_MODEL_CHANGE:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CHANGE")), Num);
-			if (Num == PC1)
-			{
-				theApp.m_ChangeModelVision1 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision1"), theApp.m_ChangeModelVision1);
-			}
-			else
-			{
-				theApp.m_ChangeModelVision2 = FALSE;
-				theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision2"), theApp.m_ChangeModelVision2);
-			}
-
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Vision %d PC Model Change Success"), Num));
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s"), Num, _T("RCV : VS_MODEL_CHANGE")), Num);
+			// 旧的 Vision PC Socket 通信已废弃
+			//if (Num == PC1)
+			//{
+			//	theApp.m_ChangeModelVision1 = FALSE;
+			//	theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision1"), theApp.m_ChangeModelVision1);
+			//}
+			//else
+			//{
+			//	theApp.m_ChangeModelVision2 = FALSE;
+			//	theApp.m_PlcThread->ModelCreateChangeModify(_T("ModelChange"), _T("Vision2"), theApp.m_ChangeModelVision2);
+			//}
 			break;
 		case VS_GRAB_END:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_GRAB_END"), m_strContents), Num);
-			ParsingGrabEnd(Num, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_GRAB_END"), m_strContents), Num);
+			//ParsingGrabEnd(Num, m_strContents);
 			break;
 		case VS_INSPECTION_OK:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_OK"), m_strContents), Num);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_OK"), m_strContents), Num);
 			break;
 		case VS_INSPECTION_RESULT:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents), Num);
-			theApp.m_pTestLog->LOG_DEBUG(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents);
-			ParsingInspectionResult(Num, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents), Num);
+			//theApp.m_pTestLog->LOG_DEBUG(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_INSPECTION_RESULT"), m_strContents);
+			//ParsingInspectionResult(Num, m_strContents);
 			break;
 		case VS_AUTO_CAM_SET_START:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_AUTO_CAM_SET_START"), m_strContents), Num);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_AUTO_CAM_SET_START"), m_strContents), Num);
 			break;
 		case VS_Z_MOVE_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_MOVE_REQUEST"), m_strContents), Num);
-			AutoFocusAxis(Num, 1, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_MOVE_REQUEST"), m_strContents), Num);
+			//AutoFocusAxis(Num, 1, m_strContents);
 			break;
 		case VS_FOCUS_MOVE_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_MOVE_REQUEST"), m_strContents), Num);
-			AutoFocusAxis(Num, 2, m_strContents);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_MOVE_REQUEST"), m_strContents), Num);
+			//AutoFocusAxis(Num, 2, m_strContents);
 			break;
 		case VS_Z_SAVE_POS_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_SAVE_POS_REQUEST"), m_strContents), Num);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_Z_SAVE_POS_REQUEST"), m_strContents), Num);
 			break;
 		case VS_FOCUS_SAVE_POS_REQUEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_SAVE_POS_REQUEST"), m_strContents), Num);
-			AutoFocusSave(Num);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_FOCUS_SAVE_POS_REQUEST"), m_strContents), Num);
+			//AutoFocusSave(Num);
 			break;
 		case VS_VISION_TEST:
-			LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_VISION_TEST"), m_strContents), Num);
-			VisionInspectionMethod(0, 0);
-			VisionInspectionMethod(1, 1);
+			//LogWrite(CStringSupport::FormatString(_T("[VS %d -> MC] %s->%s"), Num, _T("RCV : VS_VISION_TEST"), m_strContents), Num);
+			//VisionInspectionMethod(0, 0);
+			//VisionInspectionMethod(1, 1);
 			break;
 		}
 
@@ -499,11 +520,12 @@ void CVisionThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 //
 //}
 
-void CVisionThread::VisionCheckMethod(int Num)
-{
-	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
-	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
-}
+// 旧的 Vision PC Socket 检查函数已废弃（现使用 ICW）
+//void CVisionThread::VisionCheckMethod(int Num)
+//{
+//	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_VisionSocketManager[Num].m_iVisionSocketCheckCount);
+//	SocketSendto(Num, strCommand, MC_ARE_YOU_THERE);
+//}
 
 void CVisionThread::VisionPanelCheck()
 {
@@ -527,21 +549,23 @@ void CVisionThread::VisionPanelCheck()
 	}
 }
 
-void CVisionThread::ParsingModelRequest(int Num, CString strContents)
-{
-	CString sendMsg;
-	sendMsg.Format(_T("%d,%s"), MC_MODEL, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
-	SocketSendto(Num, sendMsg, MC_MODEL);
-	LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL], sendMsg), Num);
-}
+// 旧的 Vision Socket 解析函数已废弃（现使用 ICW）
+//void CVisionThread::ParsingModelRequest(int Num, CString strContents)
+//{
+//	CString sendMsg;
+//	sendMsg.Format(_T("%d,%s"), MC_MODEL, theApp.m_CurrentModel.m_AlignPcCurrentModelName);
+//	SocketSendto(Num, sendMsg, MC_MODEL);
+//	LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_MODEL], sendMsg), Num);
+//}
 
-void CVisionThread::ParsingPcTimeRequest(int Num, CString strContents)
-{
-	CString sendMsg;
-	sendMsg.Format(_T("%d,%s"), MC_PCTIME, GetDateString4());
-	SocketSendto(Num, sendMsg, MC_PCTIME);
-	LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_PCTIME], sendMsg), Num);
-}
+// 旧的 Vision Socket 解析函数已废弃（现使用 ICW）
+//void CVisionThread::ParsingPcTimeRequest(int Num, CString strContents)
+//{
+//	CString sendMsg;
+//	sendMsg.Format(_T("%d,%s"), MC_PCTIME, GetDateString4());
+//	SocketSendto(Num, sendMsg, MC_PCTIME);
+//	LogWrite(CStringSupport::FormatString(_T("[MC -> VS %d] %s->%s"), Num, MC_PacketNameTable[MC_PCTIME], sendMsg), Num);
+//}
 
 ///////////////////////////////////////////////////////////////////////////////
 // 发送 ICW Start$ 消息给点灯检系统
@@ -637,10 +661,10 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation)
 
 void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 {
-	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] PC=%d, PanelNum=%d Start"), Num, panelNum), 0);
+	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Panel=%d Start"), panelNum), 0);
 	if (theApp.m_CurrentIndexZone < 0)
 	{
-		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] PC=%d, PanelNum=%d Error: CurrentIndexZone=%d < 0"), Num, panelNum, theApp.m_CurrentIndexZone), 0);
+		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Panel=%d Error: CurrentIndexZone=%d < 0"), panelNum, theApp.m_CurrentIndexZone), 0);
 		VisionPLCResult(Num, panelNum, _T("PLC Vision IndexZone Error"), m_codeResponseError , _T("NG"));
 		return;
 	}
@@ -671,7 +695,7 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 
 	if (strFpcID.IsEmpty())
 	{
-		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] PC=%d, PanelNum=%d Error: FPC ID Empty"), Num, panelNum), 0);
+		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Panel=%d Error: FPC ID Empty"), panelNum), 0);
 		VisionPLCResult(Num, panelNum, CStringSupport::FormatString(_T("PLC Vision Panel #%d ID Error"), panelNum), m_codePlcSendReceiverError, _T("NG"));
 		return;
 	}
@@ -693,7 +717,7 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 
 #if _SYSTEM_AMTAFT_
 	// 发送 ICW Start$ 消息给点灯检系统（仅在第一个治具时发送一次）
-	if (panelNum == 0 && !m_bICWStartSent[0])
+	if (/*panelNum == 0 &&*/ !m_bICWStartSent[0])
 	{
 		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Send ICW Start Message (AutoTestMode=%d)"), theApp.m_iAutoTestMode == 1), 0);
 		SendICWStartMessage(theApp.m_iAutoTestMode == 1);
@@ -713,243 +737,102 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 	}
 }
 
-void CVisionThread::ParsingGrabEnd(int Num, CString strContents)
-{
-	CString sendMsg, strPanelID, strFpcID;
-	CStringArray responseTokens;
-	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
+// 旧的 Vision Socket 解析函数已废弃（现使用 ICW）
+//void CVisionThread::ParsingGrabEnd(int Num, CString strContents)
+//{
+//	CString sendMsg, strPanelID, strFpcID;
+//	CStringArray responseTokens;
+//	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
+//
+//	strPanelID = responseTokens[0];
+//	strFpcID = responseTokens[1];
+//	strPanelID.Trim();
+//	strFpcID.Trim();
+//
+//	LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] RCV MC_GRAB_END: PanelID=%s, FpcID=%s"), strPanelID, strFpcID), 0);
+//	//// 旧的 MC_GRAB_END_RECEIVE 发送 (已废弃，现使用 ICW)
+//	//sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
+//	//LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] Send MC_GRAB_END_RECEIVE: %s"), sendMsg), 0);
+//	//SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
+//	
+//	for (auto &InspResult : theApp.m_lastInspResultVec)
+//	{
+//		if (!InspResult.m_cellId.CompareNoCase(strPanelID))
+//		{
+//			if (InspResult.m_bInspStart == TRUE)
+//			{
+//				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab End"), strPanelID), Num);
+//				LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] Set PLC VisionGrabEnd1+%d = TRUE"), InspResult.m_iPanelNum), 0);
+//				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
+//				InspResult.m_bGrabEnd = TRUE;
+//				break;
+//			}
+//		}
+//	}
+//}
 
-	strPanelID = responseTokens[0];
-	strFpcID = responseTokens[1];
-	strPanelID.Trim();
-	strFpcID.Trim();
-
-	LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] RCV MC_GRAB_END: PanelID=%s, FpcID=%s"), strPanelID, strFpcID), 0);
-	//// 旧的 MC_GRAB_END_RECEIVE 发送 (已废弃，现使用 ICW)
-	//sendMsg.Format(_T("%d,%s,%s"), MC_GRAB_END_RECEIVE, strPanelID, strFpcID);
-	//LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] Send MC_GRAB_END_RECEIVE: %s"), sendMsg), 0);
-	//SocketSendto(Num, sendMsg, MC_GRAB_END_RECEIVE);
-	
-	for (auto &InspResult : theApp.m_lastInspResultVec)
-	{
-		if (!InspResult.m_cellId.CompareNoCase(strPanelID))
-		{
-			if (InspResult.m_bInspStart == TRUE)
-			{
-				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab End"), strPanelID), Num);
-				LogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] Set PLC VisionGrabEnd1+%d = TRUE"), InspResult.m_iPanelNum), 0);
-				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1 + InspResult.m_iPanelNum, OffSet_0, TRUE);
-				InspResult.m_bGrabEnd = TRUE;
-				break;
-			}
-		}
-	}
-}
-
-void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
-{
-	theApp.m_bVisionDeleteFlag = FALSE;
-	CString sendMsg, strPanelID, strFpcID;
-	CStringArray responseTokens;
-	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
-
-	strPanelID = responseTokens[0];
-	strFpcID = responseTokens[1];
-	strPanelID.Trim();
-	strFpcID.Trim();
-
-	//// 旧的 MC_INSPECTION_RESULT_RECEIVE 发送 (已废弃，现使用 ICW)
-	//sendMsg.Format(_T("%d,%s,%s"), MC_INSPECTION_RESULT_RECEIVE, strPanelID, strFpcID);
-	//SocketSendto(Num, sendMsg, MC_INSPECTION_RESULT_RECEIVE);
-
-	int iokng = 0;
-	for (auto &InspResult : theApp.m_lastInspResultVec)
-	{
-		if (!InspResult.m_cellId.CompareNoCase(strPanelID) || !InspResult.m_FpcID.CompareNoCase(strFpcID))
-		{
-			if (InspResult.m_bGrabEnd == TRUE)
-			{
-				if (theApp.m_AOIPassMode)
-				{
-					InspResult.m_iResultValue = m_codeOk;
-					theApp.m_pTestLog->LOG_INFO(_T("AddRankCodeList m_AOIPassMode ON %s"), InspResult.m_cellId);
-				}
-					
-				else
-				{
-					InspResult.m_iResultValue = responseTokens[2] == _T("0") ? m_codeOk : m_codeFail;
-					theApp.m_pTestLog->LOG_INFO(_T("AddRankCodeList m_AOIPassMode Off %s, Result %d"), InspResult.m_cellId, InspResult.m_iResultValue);
-				}
-					
-				iokng = InspResult.m_iResultValue;
-				if (InspResult.m_iResultValue == m_codeFail)
-				{
-					theApp.m_pRankTread->AddRankCodeList(InspResult.m_cellId, InspResult.m_FpcID, InspResult.m_iPanelNum, InspResult.m_iCurIndex, RankAOI);
-					theApp.m_pTestLog->LOG_INFO(_T("AddRankCodeList %s NG"), InspResult.m_cellId);
-				}
-				else
-				{
-					theApp.m_pTestLog->LOG_INFO(_T("AddRankCodeList %s OK"), InspResult.m_cellId);
-				}
-
-				int iSendNGBuffer = 1;
-				if (theApp.m_AOIPassMode)
-					iSendNGBuffer = 1;/* 1 : go OK, 2 : go NG Buff*/	
-				else
-					iSendNGBuffer = _ttoi(responseTokens[3]) + 1;/* 1 : go OK, 2 : go NG Buff*/
-				//iSendNGBuffer = 1; //TEST
-				VisionPLCResult(InspResult.m_iPCNum,
-					InspResult.m_iPanelNum,
-					PLC_ResultValue[InspResult.m_iResultValue],
-					InspResult.m_iResultValue,
-					InspResult.m_cellId, iSendNGBuffer);
-
-#if 0  // DFS上传已移至PlcThread::DFSDataStart，由PLC DFSStart触发
-				// 从 PLC 读取所有工序数据 + 从 MySQL 读取 AOI 结果，合并后上传 DFS (FTP)
-				if (theApp.m_pFTP != NULL)
-				{
-					// 1. 从 PLC 读取其他工序数据（Contact、PreGamma、TP、Lumitop、OPView 等）
-					DfsData dfsDataPlc;
-					int iNum = InspResult.m_iPanelNum;  // 槽位号 0-3
-					BOOL bIsOK = (InspResult.m_iResultValue == m_codeOk);  // TRUE=OK, FALSE=NG
-
-#if _SYSTEM_AMTAFT_
-					if (bIsOK)
-						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadOKDFSValue1 + iNum, &dfsDataPlc);
-					else
-						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_UnloadNGDFSValue1 + iNum, &dfsDataPlc);
-#else
-					if (bIsOK)
-						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_DFSValue1 + iNum, &dfsDataPlc);
-					else
-						theApp.m_pEqIf->m_pMNetH->GetDfsData(eWordType_GammaNGDFSValue1 + iNum, &dfsDataPlc);
-#endif
-
-					// 2. 转换为 DfsDataValue 格式
-					DfsDataValue dfsData;
-					dfsData.m_FpcID = CStringSupport::ToWString(dfsDataPlc.m_FpcID, sizeof(dfsDataPlc.m_FpcID));
-					dfsData.m_PanelID = CStringSupport::ToWString(dfsDataPlc.m_PanelID, sizeof(dfsDataPlc.m_PanelID));
-					dfsData.m_StartTime = DFSDataTimeParser(dfsDataPlc.m_StartTime1, dfsDataPlc.m_StartTime2, dfsDataPlc.m_StartTime3);
-					dfsData.m_LoadHandlerTime = DFSDataTimeParser(dfsDataPlc.m_LoadHandlerTime1, dfsDataPlc.m_LoadHandlerTime2, dfsDataPlc.m_LoadHandlerTime3);
-					dfsData.m_UnloadHandlerTime = DFSDataTimeParser(dfsDataPlc.m_UnLoadHandlerTime1, dfsDataPlc.m_UnLoadHandlerTime2, dfsDataPlc.m_UnLoadHandlerTime3);
-					dfsData.m_TpTime = Int2String(dfsDataPlc.m_TPTime);
-					dfsData.m_PreGammaTime = Int2String(dfsDataPlc.m_PreGammaTime);
-					dfsData.m_EndTime = DFSDataTimeParser(dfsDataPlc.m_EndTime1, dfsDataPlc.m_EndTime2, dfsDataPlc.m_EndTime3);
-					dfsData.m_TactTime = DFSDataTactTimeParser(dfsDataPlc.m_StartTime2, dfsDataPlc.m_StartTime3, dfsDataPlc.m_EndTime2, dfsDataPlc.m_EndTime3);
-					dfsData.m_PreGammaContactStatus = Int2String(dfsDataPlc.m_PreGammaContactStatus);
-					dfsData.m_ModelID = CStringSupport::ToWString(dfsDataPlc.m_ModelID, sizeof(dfsDataPlc.m_ModelID));
-					dfsData.m_IndexNum = Int2String(dfsDataPlc.m_IndexNum);
-					dfsData.m_ChNum = Int2String(dfsDataPlc.m_ChNum);
-					dfsData.m_TpResult = Int2String(dfsDataPlc.m_TpResult);
-					dfsData.m_Contact = dfsDataPlc.m_Contact == 1 ? _T("OK") : dfsDataPlc.m_Contact == 2 ? _T("NG") : _T("BYPASS");
-					dfsData.m_PreGamma = dfsDataPlc.m_PreGamma == 1 ? _T("OK") : dfsDataPlc.m_PreGamma == 2 ? _T("NG") : _T("BYPASS");
-					dfsData.m_TpResult2 = dfsDataPlc.m_TpResult2 == 1 ? _T("OK") : dfsDataPlc.m_TpResult2 == 2 ? _T("NG") : _T("BYPASS");
-					dfsData.m_Lumitop = dfsDataPlc.m_Lumitop == 1 ? _T("OK") : dfsDataPlc.m_Lumitop == 2 ? _T("NG") : _T("BYPASS");
-					dfsData.m_ContactCount = Int2String(dfsDataPlc.m_ContactCount);
-					dfsData.m_LoadeHandlerNUM = Int2String(dfsDataPlc.m_LoadeHandlerNUM);
-					dfsData.m_UnLoadeHandlerNUM = Int2String(dfsDataPlc.m_UnLoadeHandlerNUM);
-					dfsData.m_opViewResult = dfsDataPlc.m_OPView == 1 ? _T("OK") : dfsDataPlc.m_OPView == 2 ? _T("NG") : _T("BYPASS");
-					dfsData.m_TypeNum = Machine_AOI;  // 点灯检是 AOI 设备
-					dfsData.m_StageNum = iNum + 1;
-
-					// 3. 从 MySQL 读取 AOI 结果，覆盖 m_AOIInpsect
-					if (!InspResult.m_UniqueID.IsEmpty())
-					{
-						CInspectionResult aoiResult;
-						if (GetDBInterface().QueryByUniqueID(InspResult.m_UniqueID, aoiResult))
-						{
-							// 根据 MySQL 的 AOIResult 设置 AOI 工序结果
-							if (aoiResult.AOIResult.CompareNoCase(_T("OK")) == 0)
-								dfsData.m_AOIInpsect = _T("OK");
-							else
-								dfsData.m_AOIInpsect = _T("NG");  // 其他（NG/BrightDot等）都按 NG 处理
-
-							LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from MySQL: %s"), 
-								strPanelID, aoiResult.AOIResult), Num);
-						}
-						else
-						{
-							// MySQL 查询失败时，用本地结果
-							dfsData.m_AOIInpsect = (InspResult.m_iResultValue == m_codeOk) ? _T("OK") : _T("NG");
-							LogWrite(CStringSupport::FormatString(_T("Panel [%s] AOI Result from Local: %s, MySQL Error: %s"), 
-								strPanelID, dfsData.m_AOIInpsect, GetDBInterface().GetLastError()), Num);
-						}
-					}
-					else
-					{
-						// 没有 UniqueID 时，用本地结果
-						dfsData.m_AOIInpsect = (InspResult.m_iResultValue == m_codeOk) ? _T("OK") : _T("NG");
-					}
-
-					// 4. 上传到 FTP
-					theApp.m_pFTP->AddTransferFile(dfsData);
-					LogWrite(CStringSupport::FormatString(_T("Panel [%s] DFS Upload Success (Contact:%s, PreGamma:%s, AOI:%s, TP:%s, Lumitop:%s, OPView:%s)"), 
-						strPanelID, dfsData.m_Contact, dfsData.m_PreGamma, dfsData.m_AOIInpsect, 
-						dfsData.m_TpResult, dfsData.m_Lumitop, dfsData.m_opViewResult), Num);
-				}
-#endif
-
-				InspResult.time_check.StopTimer();
-				InspResult.m_bResult = TRUE;
-			}
-			else
-			{
-				theApp.m_pTestLog->LOG_DEBUG(_T("Panel [%s] Vision Grab Error"), strPanelID);
-				LogWrite(CStringSupport::FormatString(_T("Panel [%s] Vision Grab Error"), strPanelID), Num);
-			}
-			break;
-		}
-		else
-		{
-			theApp.m_pTestLog->LOG_DEBUG(_T("PanelID Err : %s"), strPanelID);
-		}
-	}
-	theApp.m_bVisionDeleteFlag = TRUE;
-	if (!theApp.m_AOIPassMode)
-	{
-		if (iokng == 2)
-		{
-			CString strMsg;
-			strMsg = CStringSupport::FormatString(_T("%d,%d"), MC_NG_PANEL, _AOI);
-			theApp.m_OpvSocketManager[0].SendOpvMessage(strMsg, 0, MC_NG_PANEL);
-			theApp.m_OpvSocketManager[1].SendOpvMessage(strMsg, 1, MC_NG_PANEL);
-			
-		}
-	}
-	else
-	{
-		theApp.m_pTestLog->LOG_DEBUG(_T("AOI PassMode %s"), strPanelID);
-	}
-	
-}
+// 旧的 Vision Socket 解析函数已废弃（现使用 ICW）
+//void CVisionThread::ParsingInspectionResult(int Num, CString strContents)
+//{
+//	theApp.m_bVisionDeleteFlag = FALSE;
+//	CString sendMsg, strPanelID, strFpcID;
+//	CStringArray responseTokens;
+//	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
+//
+//	strPanelID = responseTokens[0];
+//	strFpcID = responseTokens[1];
+//	strPanelID.Trim();
+//	strFpcID.Trim();
+//
+//	//// 旧的 MC_INSPECTION_RESULT_RECEIVE 发送 (已废弃，现使用 ICW)
+//	//sendMsg.Format(_T("%d,%s,%s"), MC_INSPECTION_RESULT_RECEIVE, strPanelID, strFpcID);
+//	//SocketSendto(Num, sendMsg, MC_INSPECTION_RESULT_RECEIVE);
+//
+//	int iokng = 0;
+//	for (auto &InspResult : theApp.m_lastInspResultVec)
+//	{
+//		if (!InspResult.m_cellId.CompareNoCase(strPanelID) || !InspResult.m_FpcID.CompareNoCase(strFpcID))
+//		{
+//			if (InspResult.m_bGrabEnd == TRUE)
+//			{
+//				// ... 解析结果并调用 VisionPLCResult ...
+//				InspResult.time_check.StopTimer();
+//				InspResult.m_bResult = TRUE;
+//			}
+//			break;
+//		}
+//	}
+//	theApp.m_bVisionDeleteFlag = TRUE;
+//}
 
 void CVisionThread::OnEvent(UINT uEvent, LPVOID lpvData)
 {
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	int VisionNum = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
+	// 旧的 Vision PC Socket 通信已废弃（现使用 ICW 6501端口统一通信）
+	//SockAddrIn addrin;
+	//GetSockName(addrin);
+	//int VisionNum = ntohs(addrin.GetPort()) == _ttoi(VISION_PC1_PORT_NUM) ? PC1 : PC2;
 	
-	switch (uEvent)
-	{
-	case EVT_CONDROP:
-		LogWrite(CStringSupport::FormatString(_T("Vision Connect Drop %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_CONSUCCESS:
-		LogWrite(CStringSupport::FormatString(_T("Vision Connect Success %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_ZEROLENGTH:
-		LogWrite(CStringSupport::FormatString(_T("Vision EVT_ZEROLENGTH %d Ch"), VisionNum), VisionNum);
-		break;
-	case EVT_CONFAILURE:
-		LogWrite(CStringSupport::FormatString(_T("Vision EVT_CONFAILURE %d Ch"), VisionNum), VisionNum);
-		break;
-	default:
-		LogWrite(CStringSupport::FormatString(_T("Vision Unknown Socket event %d Ch"), VisionNum), VisionNum);
-		break;
-	}
+	//switch (uEvent)
+	//{
+	//case EVT_CONDROP:
+	//	LogWrite(CStringSupport::FormatString(_T("Vision Connect Drop %d Ch"), VisionNum), VisionNum);
+	//	break;
+	//case EVT_CONSUCCESS:
+	//	LogWrite(CStringSupport::FormatString(_T("Vision Connect Success %d Ch"), VisionNum), VisionNum);
+	//	break;
+	//case EVT_ZEROLENGTH:
+	//	LogWrite(CStringSupport::FormatString(_T("Vision EVT_ZEROLENGTH %d Ch"), VisionNum), VisionNum);
+	//	break;
+	//case EVT_CONFAILURE:
+	//	LogWrite(CStringSupport::FormatString(_T("Vision EVT_CONFAILURE %d Ch"), VisionNum), VisionNum);
+	//	break;
+	//default:
+	//	LogWrite(CStringSupport::FormatString(_T("Vision Unknown Socket event %d Ch"), VisionNum), VisionNum);
+	//	break;
+	//}
 }
 
 BOOL CVisionThread::getConectCheck()
@@ -1022,26 +905,27 @@ void CVisionThread::CloseTask()
 	}
 }
 
-void CVisionThread::SocketSendto(int Num, CString strContents, int iCommand)
-{
-	if (theApp.m_bExitFlag == FALSE)
-		return;
-
-	m_csSocketSend.Lock();
-	CString strCommand = CStringSupport::FormatString(_T("%c%s,%c"), _STX, strContents, _ETX);
-	char *lpCommand = StringToChar(strCommand);
-	theApp.m_VisionSocketManager[Num].WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
-	delete lpCommand;
-
-	m_lastContent[Num] = strContents;
-
-	if (Num == PC1)
-		theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
-	else
-		theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
-
-	m_csSocketSend.Unlock();
-}
+// 旧的 Vision PC Socket 发送函数已废弃（现使用 ICW）
+//void CVisionThread::SocketSendto(int Num, CString strContents, int iCommand)
+//{
+//	if (theApp.m_bExitFlag == FALSE)
+//		return;
+//
+//	m_csSocketSend.Lock();
+//	CString strCommand = CStringSupport::FormatString(_T("%c%s,%c"), _STX, strContents, _ETX);
+//	char *lpCommand = StringToChar(strCommand);
+//	theApp.m_VisionSocketManager[Num].WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
+//	delete lpCommand;
+//
+//	m_lastContent[Num] = strContents;
+//
+//	//if (Num == PC1)
+//	//	theApp.m_pVisionSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+//	//else
+//	//	theApp.m_pVisionSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+//
+//	m_csSocketSend.Unlock();
+//}
 
 void CVisionThread::LogWrite(CString strContents, int Num)
 {
@@ -1215,10 +1099,10 @@ void CVisionThread::OnICWStart(const ICW_StartInfo& startInfo)
 			product.Position, product.UniqueId, product.Barcode), 0);
 		if (iPanelNum >= 0 && iPanelNum < 4)
 		{
-			int iPcNum = iPanelNum <= 1 ? PC1 : PC2;
-			LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Trigger VisionInspectionMethod: PC=%d, Panel=%d"),
-				iPcNum, iPanelNum), 0);
-			VisionInspectionMethod(iPcNum, iPanelNum);
+			// 4-Line 系统使用 ICW 统一通信，直接使用治具号
+			LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Trigger VisionInspectionMethod: Panel=%d"),
+				iPanelNum), 0);
+			VisionInspectionMethod(iPanelNum, iPanelNum);
 		}
 		else
 		{
