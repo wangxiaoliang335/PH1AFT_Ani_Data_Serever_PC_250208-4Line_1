@@ -167,6 +167,18 @@ void CTopCtrl::OnTimer(UINT_PTR nIDEvent)
 	m_netWorkIf[NUM_NETWORK_PG1].SetValue(theApp.m_PgConectStatus[PgServer_1]);
 	m_netWorkIf[NUM_NETWORK_PG2].SetValue(theApp.m_PgConectStatus[PgServer_2]);
 	m_netWorkIf[NUM_NETWORK_PG3].SetValue(theApp.m_PgConectStatus[PgServer_3]);
+
+	// 每2分钟打印 PG1/PG2/PG3 连接状态
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	if (st.wSecond == 0 && st.wMinute % 2 == 0)
+	{
+		CString strPG1 = theApp.m_PgConectStatus[PgServer_1] ? _T("Connected") : _T("Disconnected");
+		CString strPG2 = theApp.m_PgConectStatus[PgServer_2] ? _T("Connected") : _T("Disconnected");
+		CString strPG3 = theApp.m_PgConectStatus[PgServer_3] ? _T("Connected") : _T("Disconnected");
+		TRACE(_T("[PG Status] PG1(55000)=%s, PG2(55009)=%s, PG3(55010)=%s\n"), strPG1, strPG2, strPG3);
+	}
+
 	m_netWorkIf[NUM_NETWORK_TP_1].SetValue(theApp.m_TpConectStatus);
 
 	m_netWorkIf[NUM_NETWORK_OPV_1].SetValue(theApp.m_OpvConectStatus[CH_1]);

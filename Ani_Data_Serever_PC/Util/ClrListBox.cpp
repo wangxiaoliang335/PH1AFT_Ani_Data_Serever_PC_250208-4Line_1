@@ -103,6 +103,10 @@ int CClrListBox::AddString(LPCTSTR lpszItem)
 }
 int CClrListBox::InsertString(int nIndex, LPCTSTR lpszItem)
 {
+	// ï¿½ï¿½ï¿½ï¿½??Ï¢Ê¦ï¿½ï¿½ï¿½?ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½Ô¯?
+	if (m_hWnd == NULL || !::IsWindow(m_hWnd))
+		return -1;
+
 	//20180725 hacy
 	if (((CListBox*)this)->GetCount() > 20000)
 		((CListBox*)this)->ResetContent();
@@ -138,7 +142,7 @@ void CClrListBox::SetItemColor(int nIndex, COLORREF rgb)
 	RedrawWindow();
 }
 
-//<<20180201 hacy °¡·Î½ºÅ©·Ñ Ãß°¡ÇÒ¼ö ÀÖµµ·Ï Ãß°¡
+//<<20180201 hacy ????????? ?????? ????? ???
 int CClrListBox::GetTextLen(LPCTSTR lpszText)
 {
 	ASSERT(AfxIsValidString(lpszText));
