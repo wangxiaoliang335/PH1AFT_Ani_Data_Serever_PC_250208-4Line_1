@@ -51,24 +51,68 @@ void CPgIndex::ThreadRun()
 	for (auto &InspResult : theApp.m_lastIndexPgVec[m_iZoneNum])
 		InspResult.Reset();
 
+	// PG1 状态变化检测（避免日志刷屏）
+	static BOOL s_bLastPg1Connected = FALSE;
+	static DWORD s_dwLastPg1LogTime = 0;
+	const DWORD PG_LOG_INTERVAL_MS = 120000; // 2分钟
+
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
 	{
 		theApp.m_PgConectStatus[PgServer_1] = theApp.m_PgSocketManager[PgServer_1].getConectCheck();
 		theApp.m_TpConectStatus = theApp.m_TpSocketManager.getConectCheck();
 
-		//if (theApp.m_bAllPassMode)
-		//	continue;
+		// PG1 状态变化时输出日志（避免刷屏）
+		BOOL bCurrentPg1Connected = theApp.m_PgConectStatus[PgServer_1];
+	DWORD dwCurrentTime = GetTickCount();
+	if (bCurrentPg1Connected != s_bLastPg1Connected ||
+		(dwCurrentTime - s_dwLastPg1LogTime > PG_LOG_INTERVAL_MS))
+	{
+		CString strStatus = bCurrentPg1Connected ? _T("Connected") : _T("Disconnected");
+		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(
+			CStringSupport::FormatString(_T("[PG Status] PG1 (Port:55000) = %s"), strStatus));
+		s_bLastPg1Connected = bCurrentPg1Connected;
+		s_dwLastPg1LogTime = dwCurrentTime;
+	}
 
-		if (theApp.m_PlcConectStatus == FALSE)
-		{
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] PLC Connect Status = FALSE, Skip Loop"), m_strIndexName));
-			continue;
-		}
+	// PLC 连接状态变化检测（避免日志刷屏）
+	static BOOL s_bLastPlcConnected = FALSE;
+	static DWORD s_dwLastPlcLogTime = 0;
+	const DWORD PLC_LOG_INTERVAL_MS = 60000; // 1分钟
+	if (theApp.m_PlcConectStatus != s_bLastPlcConnected ||
+		(dwCurrentTime - s_dwLastPlcLogTime > PLC_LOG_INTERVAL_MS))
+	{
+		CString strStatus = theApp.m_PlcConectStatus ? _T("Connected") : _T("Disconnected");
+		theApp.m_PlcThread->LogWrite(
+			CStringSupport::FormatString(_T("[%s] PLC Status = %s"), m_strIndexName, strStatus), FALSE);
+		s_bLastPlcConnected = theApp.m_PlcConectStatus;
+		s_dwLastPlcLogTime = dwCurrentTime;
+	}
+
+	//if (theApp.m_bAllPassMode)
+	//	continue;
+
+	if (theApp.m_PlcConectStatus == FALSE)
+	{
+		continue;
+	}
 
 		//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, FALSE);  //test
 		if (theApp.m_PgConectStatus[PgServer_1] || theApp.m_PgPassMode)
 		{
-			if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AZoneContactPlcSend + m_iZoneNum, OffSet_0))
+			BOOL bPlcSend = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AZoneContactPlcSend + m_iZoneNum, OffSet_0);
+
+			// Contact PlcSend 状态变化检测
+			static BOOL s_bLastContactPlcSend = FALSE;
+			if (bPlcSend != s_bLastContactPlcSend)
+			{
+				if (bPlcSend)
+					theApp.m_PlcLog->LOG_INFO(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+				else
+					theApp.m_PlcLog->LOG_INFO(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
+				s_bLastContactPlcSend = bPlcSend;
+			}
+
+			if (bPlcSend)
 			{
 				ZonePanelCheck(ContactPanelCheck);
 			}
@@ -77,13 +121,29 @@ void CPgIndex::ThreadRun()
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, FALSE);
 			}
 
-
 			if (theApp.m_TpConectStatus || theApp.m_TpPassMode)
 			{
-				if (theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AZoneTouchPlcSend + m_iZoneNum, OffSet_0))
+				BOOL bTouchPlcSend = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_AZoneTouchPlcSend + m_iZoneNum, OffSet_0);
+
+				// Touch PlcSend 状态变化检测
+				static BOOL s_bLastTouchPlcSend = FALSE;
+				if (bTouchPlcSend != s_bLastTouchPlcSend)
+				{
+					if (bTouchPlcSend)
+						theApp.m_PlcLog->LOG_INFO(_T("[%s] Touch PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+					else
+						theApp.m_PlcLog->LOG_INFO(_T("[%s] Touch PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
+					s_bLastTouchPlcSend = bTouchPlcSend;
+				}
+
+				if (bTouchPlcSend)
+				{
 					ZonePanelCheck(TouchPanelCheck);
+				}
 				else
+				{
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneTouchPcReceiver + m_iZoneNum, OffSet_0, FALSE);
+				}
 			}
 
 			if (theApp.m_iMachineType == SetAMT)
