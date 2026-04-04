@@ -115,8 +115,9 @@ void CDlgMainView::SocketServerOpen()
 		switch (ii)
 		{
 		case _THREAD_VISION:
-			theApp.m_VisionThreadOpenFlag[PC1] = theApp.m_VisionSocketManager[PC1].SocketServerOpen(VISION_PC1_PORT_NUM);		//1,3 카메라
-			theApp.m_VisionThreadOpenFlag[PC2] = theApp.m_VisionSocketManager[PC2].SocketServerOpen(VISION_PC2_PORT_NUM);		//2,4 카메라
+			// 旧的 Vision PC Socket 通信已废弃（现使用 ICW 6501端口统一通信）
+			// theApp.m_VisionThreadOpenFlag[PC1] = theApp.m_VisionSocketManager[PC1].SocketServerOpen(VISION_PC1_PORT_NUM);
+			// theApp.m_VisionThreadOpenFlag[PC2] = theApp.m_VisionSocketManager[PC2].SocketServerOpen(VISION_PC2_PORT_NUM);
 			break; 
 		case _THREAD_VIEWING_ANGLE:
 			theApp.m_ViewingAngleThreadOpenFlag[PanelNum1] = theApp.m_ViewingAngleSocketManager[PanelNum1].SocketServerOpen(VIEWING_ANGLE_PANEL1_PORT_NUM);

@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 #if _SYSTEM_AMTAFT_
 #include "DlgMainLog.h"
@@ -27,6 +27,28 @@ void CManualThread::ThreadRun()
 		theApp.m_PgConectStatus[PgServer_3] = theApp.m_PgSocketManager[PgServer_3].getConectCheck();
 		theApp.m_OpvConectStatus[CH_1] = theApp.m_OpvSocketManager[CH_1].getConectCheck();
 		theApp.m_OpvConectStatus[CH_2] = theApp.m_OpvSocketManager[CH_2].getConectCheck();
+
+		// PG2/PG3 状态变化时输出日志（避免刷屏）
+		static BOOL s_bLastPg2Connected = FALSE;
+		static BOOL s_bLastPg3Connected = FALSE;
+		static DWORD s_dwLastPg23LogTime = 0;
+		const DWORD PG_LOG_INTERVAL_MS = 120000; // 2分钟
+
+		BOOL bCurrentPg2Connected = theApp.m_PgConectStatus[PgServer_2];
+		BOOL bCurrentPg3Connected = theApp.m_PgConectStatus[PgServer_3];
+		DWORD dwCurrentTime = GetTickCount();
+		if (bCurrentPg2Connected != s_bLastPg2Connected ||
+			bCurrentPg3Connected != s_bLastPg3Connected ||
+			(dwCurrentTime - s_dwLastPg23LogTime > PG_LOG_INTERVAL_MS))
+		{
+			CString strStatus2 = bCurrentPg2Connected ? _T("Connected") : _T("Disconnected");
+			CString strStatus3 = bCurrentPg3Connected ? _T("Connected") : _T("Disconnected");
+			theApp.m_PgSocketManager[PgServer_2].PgLogMessage(
+				CStringSupport::FormatString(_T("[PG Status] PG2 (Port:55009) = %s, PG3 (Port:55010) = %s"), strStatus2, strStatus3));
+			s_bLastPg2Connected = bCurrentPg2Connected;
+			s_bLastPg3Connected = bCurrentPg3Connected;
+			s_dwLastPg23LogTime = dwCurrentTime;
+		}
 
 		//if (theApp.m_bAllPassMode)
 		//	continue;
