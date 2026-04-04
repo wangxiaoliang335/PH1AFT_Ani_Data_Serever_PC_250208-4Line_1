@@ -80,7 +80,7 @@ public:
 
 	void ModelCreateChange(CString sendMsg, int iCommand);
 
-	void LogWrite(CString strContents);
+	void LogWrite(CString strContents, BOOL bAddListBox = TRUE);
 
 	BOOL m_plcStart;
 	void ProgramStartStopLog();

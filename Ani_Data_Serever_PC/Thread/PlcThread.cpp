@@ -1018,41 +1018,66 @@ void CPlcThread::ThreadRun()
 				}
 			}
 
-			if (theApp.m_AOIPassMode)
+		if (theApp.m_AOIPassMode)
+		{
+			theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
+		}
+		else
+		{
+			// ICW 6501端口连接状态检查
+			BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
+
+			// VisionReady 状态变化检测（避免日志刷屏）
+			static BOOL s_bLastICWConnected = FALSE;
+			static int s_iLastAOIPassMode = -1;
+			static DWORD s_dwLastVisionReadyLogTime = 0;
+			const DWORD VISION_READY_LOG_INTERVAL_MS = 60000; // 1分钟
+
+			BOOL bNeedLog = FALSE;
+			if (bICWConnected != s_bLastICWConnected || theApp.m_AOIPassMode != s_iLastAOIPassMode)
 			{
+				bNeedLog = TRUE;
+			}
+			else if (GetTickCount() - s_dwLastVisionReadyLogTime > VISION_READY_LOG_INTERVAL_MS)
+			{
+				bNeedLog = TRUE;
+			}
+
+			if (bNeedLog)
+			{
+				LogWrite(CStringSupport::FormatString(_T("[VisionReady] AOIPassMode=%d, ICWConnected=%d"),
+					theApp.m_AOIPassMode, bICWConnected));
+				s_bLastICWConnected = bICWConnected;
+				s_iLastAOIPassMode = theApp.m_AOIPassMode;
+				s_dwLastVisionReadyLogTime = GetTickCount();
+			}
+
+			if (bICWConnected)
+			{
+				if (bNeedLog)
+					LogWrite(_T("[VisionReady] ICW Connected - Set VisionReady=TRUE"));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
 			}
 			else
 			{
-				// ICW 6501端口连接状态检查
-				BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
-				LogWrite(CStringSupport::FormatString(_T("[VisionReady] AOIPassMode=%d, ICWConnected=%d"),
-					theApp.m_AOIPassMode, bICWConnected));
-
-				if (bICWConnected)
-				{
-					LogWrite(_T("[VisionReady] ICW Connected - Set VisionReady=TRUE"));
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
-				}
-				else
-				{
+				if (bNeedLog)
 					LogWrite(_T("[VisionReady] ICW Disconnected - Reset VisionReady and all Vision signals to FALSE"));
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, 0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd2, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd3, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd4, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd2, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd3, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd4, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1, &m_codeReset);
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult2, &m_codeReset);
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult3, &m_codeReset);
-					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult4, &m_codeReset);
-				}
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, 0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd2, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd3, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd4, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd1, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd2, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd3, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionGrabEnd4, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult2, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult3, &m_codeReset);
+				theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult4, &m_codeReset);
 			}
+		}
 
 			if (theApp.m_iMachineType == SetAFT)
 			{
@@ -1687,12 +1712,13 @@ void CPlcThread::TactCloseTask()
 	}
 }
 
-void  CPlcThread::LogWrite(CString strContents)
+void  CPlcThread::LogWrite(CString strContents, BOOL bAddListBox)
 {
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	g_MainLog->m_PlcListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+	if (bAddListBox && g_MainLog != NULL && g_MainLog->m_PlcListBox.m_hWnd != NULL)
+		g_MainLog->m_PlcListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
 	theApp.m_PlcLog->LOG_INFO(strContents);
 }
 
@@ -1716,9 +1742,10 @@ void CPlcThread::ProgramStartStopLog()
 			theApp.m_AlignSocketManager[ii]->SocketSendto(ii, sendMsg, MC_STATE);
 
 #if _SYSTEM_AMTAFT_
-		sendMsg.Format(_T("%d,%d"), MC_STATE, start);
-		for (int ii = 0; ii < PCMaxCount; ii++)
-			theApp.m_VisionSocketManager[ii].SocketSendto(ii, sendMsg, MC_STATE);
+		// 旧的 Vision PC Socket 通信已废弃（现使用 ICW 6501端口统一通信）
+		//sendMsg.Format(_T("%d,%d"), MC_STATE, start);
+		//for (int ii = 0; ii < PCMaxCount; ii++)
+		//	theApp.m_VisionSocketManager[ii].SocketSendto(ii, sendMsg, MC_STATE);
 #endif
 	}
 }
