@@ -288,7 +288,7 @@ LRESULT CDlgMainView::OnICWConnected(WPARAM wParam, LPARAM lParam)
 			{
 				theApp.m_PlcLog->LOG_INFO(_T("[AUTO_TEST] ICW Connected, AUTO_TEST=1, Sending Start$ signal"));
 				// 传入 TRUE 表示模拟模式，直接发送所有槽位
-				theApp.m_VisionThread->SendICWStartMessage(TRUE);
+				theApp.m_VisionThread->SendICWStartMessage(TRUE, NULL);
 				// 【重要修复】发送后立即设置标志，防止重复发送
 				// 只有在 AUTO_TEST 模式下才在这里设置标志
 				theApp.m_VisionThread->SetICWStartSent(TRUE);

@@ -1717,9 +1717,22 @@ void  CPlcThread::LogWrite(CString strContents, BOOL bAddListBox)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	if (bAddListBox && g_MainLog != NULL && g_MainLog->m_PlcListBox.m_hWnd != NULL)
-		g_MainLog->m_PlcListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+	// 先写入日志文件（线程安全）
 	theApp.m_PlcLog->LOG_INFO(strContents);
+
+	// 通过 PostMessage 发送到 UI 线程更新 ListBox（避免跨线程操作 MFC 控件）
+	if (bAddListBox)
+	{
+		CString* pStrLog = new CString(strContents);
+		if (g_MainLog && g_MainLog->m_hWnd)
+		{
+			g_MainLog->PostMessage(WM_PLC_LOG, 0, (LPARAM)pStrLog);
+		}
+		else
+		{
+			delete pStrLog;
+		}
+	}
 }
 
 void CPlcThread::ProgramStartStopLog()

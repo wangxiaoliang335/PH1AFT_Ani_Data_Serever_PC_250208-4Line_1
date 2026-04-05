@@ -1131,6 +1131,29 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 	CString strFilePath, strShift, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 
+	// 优先从数据库查询缺陷码（4-Line 系统使用数据库）
+	if (iTypeNum == Machine_AOI && GetDBInterface().IsConnected())
+	{
+		CString strCode, strGrade;
+		// 使用 FpcID 作为 Barcode 查询 IVS_LCD_InspectionResult
+		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strCode, strGrade))
+		{
+			if (!strCode.IsEmpty())
+			{
+				strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), strCode, strGrade);
+				theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
+					strPanelID, strFpcID, strCodeGrade);
+				return strCodeGrade;
+			}
+		}
+		else
+		{
+			theApp.m_PlcLog->LOG_WARN(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB Query Failed: %s"),
+				strPanelID, strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
+		}
+	}
+
+	// 倒退到原有文本文件方式（向后兼容）
 	for (int i = 0; i < 14/*필요시 파라미터 최대 검색 Day*/; i++)
 	{
 		
