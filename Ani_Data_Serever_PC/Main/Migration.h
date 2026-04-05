@@ -1556,9 +1556,13 @@ struct InspResult
 	BOOL m_bGrabEnd;
 	USHORT m_iResultValue;
 	CTimerCheck time_check;
+	// 旧字段（保留兼容 LumitopThread 等）
 	int m_iIndexPanelNum;
-	int m_iPanelNum;
-	int m_iPCNum;
+	int m_iPanelNum;   // 通道号（兼容 LumitopThread）
+	int m_iPCNum;      // 治具号（兼容 LumitopThread）
+	// 新字段（VisionThread 专用，语义更清晰）
+	int m_iChannelNo;  // 通道号/治具号 0-based
+	int m_iJigNo;      // 治具号 0-based
 	int m_iStatus;
 	int m_iCurIndex;
 	int m_iGammaRunChNum;
@@ -1566,6 +1570,7 @@ struct InspResult
 	void Reset()
 	{
 		m_iResultValue = m_iIndexPanelNum = m_iPanelNum = m_iPCNum = m_iStatus = m_iCurIndex = m_iGammaRunChNum = 0;
+		m_iChannelNo = m_iJigNo = 0;
 		m_bGrabEnd = m_bContactOn = m_bResult = m_LastCheck = m_bInspStart = FALSE;
 		m_FpcID = m_strZoneName = m_cellId = m_strcellId[CH_1] = m_strcellId[CH_2] = m_UniqueID = _T("");
 		time_check.StopTimer();

@@ -1211,9 +1211,9 @@ BOOL CDBInterface::QueryByGUID(const CString& strGUID, CInspectionResult& result
     result.GUID = GetColumnString(hStmt, 2);
     result.ScreenID = GetColumnString(hStmt, 3);
     result.DeviceID = GetColumnString(hStmt, 4);
-    result.UniqueID = GetColumnString(hStmt, 7);
-    result.AOIResult = GetColumnString(hStmt, 14);
-    result.Grade_AOI = GetColumnString(hStmt, 25);
+    result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
+    result.AOIResult = GetColumnString(hStmt, 12);    // 12: AOIResult
+    result.Grade_AOI = GetColumnString(hStmt, 45);    // 45: Grade_AOI
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1244,10 +1244,13 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
         return FALSE;
     }
 
+    result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
     result.GUID = GetColumnString(hStmt, 2);
     result.ScreenID = GetColumnString(hStmt, 3);
-    result.UniqueID = GetColumnString(hStmt, 7);
-    result.AOIResult = GetColumnString(hStmt, 14);
+    result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
+    result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
+    result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
+    result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1438,11 +1441,12 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
         }
 
         CInspectionResult result;
+        result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
         result.GUID = GetColumnString(hStmt, 2);
         result.ScreenID = GetColumnString(hStmt, 3);
-        result.UniqueID = GetColumnString(hStmt, 7);
-        result.AOIResult = GetColumnString(hStmt, 14);
-        result.Grade_AOI = GetColumnString(hStmt, 25);
+        result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
+        result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
+        result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
 
         results.push_back(result);
     }
