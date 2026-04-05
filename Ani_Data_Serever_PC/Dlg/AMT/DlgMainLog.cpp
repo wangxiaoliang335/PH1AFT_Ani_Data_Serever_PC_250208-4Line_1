@@ -1,4 +1,4 @@
-﻿// MainLogDlg.cpp : 구현 파일입니다.
+// MainLogDlg.cpp : 구현 파일입니다.
 //
 
 #include "stdafx.h"
@@ -39,6 +39,10 @@ void CDlgMainLog::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CDlgMainLog, CDialogEx)
 	ON_WM_TIMER()
+	ON_MESSAGE(WM_PLC_LOG, OnPlcLog)
+	ON_MESSAGE(WM_TOUCH_LOG, OnTouchLog)
+	ON_MESSAGE(WM_ALIGN_LOG, OnAlignLog)
+	ON_MESSAGE(WM_PG_LOG, OnPgLog)
 END_MESSAGE_MAP()
 
 BOOL CDlgMainLog::OnInitDialog()
@@ -202,6 +206,58 @@ void CDlgMainLog::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	CDialogEx::OnTimer(nIDEvent);
+}
+
+// PLC 日志消息处理
+LRESULT CDlgMainLog::OnPlcLog(WPARAM wParam, LPARAM lParam)
+{
+	CString* pStrLog = (CString*)lParam;
+	if (pStrLog && ::IsWindow(m_PlcListBox.m_hWnd))
+	{
+		m_PlcListBox.InsertString(0,
+			CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), *pStrLog));
+		delete pStrLog;
+	}
+	return 0;
+}
+
+// Touch 日志消息处理
+LRESULT CDlgMainLog::OnTouchLog(WPARAM wParam, LPARAM lParam)
+{
+	CString* pStrLog = (CString*)lParam;
+	if (pStrLog && ::IsWindow(m_TouchListBox.m_hWnd))
+	{
+		m_TouchListBox.InsertString(0,
+			CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), *pStrLog));
+		delete pStrLog;
+	}
+	return 0;
+}
+
+// Align 日志消息处理
+LRESULT CDlgMainLog::OnAlignLog(WPARAM wParam, LPARAM lParam)
+{
+	CString* pStrLog = (CString*)lParam;
+	if (pStrLog && ::IsWindow(m_AlignListBox.m_hWnd))
+	{
+		m_AlignListBox.InsertString(0,
+			CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), *pStrLog));
+		delete pStrLog;
+	}
+	return 0;
+}
+
+// PG 日志消息处理
+LRESULT CDlgMainLog::OnPgLog(WPARAM wParam, LPARAM lParam)
+{
+	CString* pStrLog = (CString*)lParam;
+	if (pStrLog && ::IsWindow(m_PgListBox.m_hWnd))
+	{
+		m_PgListBox.InsertString(0,
+			CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), *pStrLog));
+		delete pStrLog;
+	}
+	return 0;
 }
 #endif
 
