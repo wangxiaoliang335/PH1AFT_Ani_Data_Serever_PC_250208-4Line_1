@@ -31,8 +31,10 @@
 // 旧版检测结束信息
 struct ICW_LegacyFinishInfo
 {
-    std::vector<int> Results;  // 每个治具的检测结果 (1=OK, 2=NG, 3=ERROR, 0=无)
-    CString RawMessage;        // 原始消息
+    // One entry per 2-digit field in FN$ payload, in station order (fixture 1, 2, 3, 4...).
+    // 0 = that slot not finished (00); non-zero = that slot finished (01/02/03/04 = completion codes, not OK/NG).
+    std::vector<int> Results;
+    CString RawMessage;
 };
 
 // 检测结果

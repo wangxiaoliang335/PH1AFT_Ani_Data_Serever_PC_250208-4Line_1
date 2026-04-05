@@ -438,11 +438,10 @@ CString CICWProtocol::SerializeLegacyFinishFN(const ICW_FinishInfo& info, int ma
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 解析旧版检测结束报文: FN$xxxx@
-// - Result=1(OK)    -> "01"
-// - Result=2(NG)    -> "02"
-// - Result=3(ERROR) -> "03"
-// - 其它/缺省        -> "00"
+// Parse legacy finish message: FN$xxxx@
+// Payload is concatenated 2-digit fields per station in order (e.g. fixture 1..4).
+// 00 = that station not completed; 01/02/03/04 = completion codes for finished stations
+// (same digit meaning as Start$; not PLC OK/NG). Main OK/NG comes from DB AOIResult.
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CICWProtocol::ParseLegacyFinishFN(const CString& strMsg, ICW_LegacyFinishInfo& info)
 {
@@ -452,7 +451,6 @@ BOOL CICWProtocol::ParseLegacyFinishFN(const CString& strMsg, ICW_LegacyFinishIn
     info = ICW_LegacyFinishInfo();
     info.RawMessage = strMsg;
 
-    // 去掉 FN$ 前缀和末尾的 @
     CString payload = strMsg;
     payload.Trim();
     if (payload.Right(1) == _T("@"))
@@ -460,21 +458,12 @@ BOOL CICWProtocol::ParseLegacyFinishFN(const CString& strMsg, ICW_LegacyFinishIn
     if (payload.Left(3).CompareNoCase(_T("FN$")) == 0)
         payload = payload.Mid(3);
 
-    // 每2位代表一个治具结果
     int nLen = payload.GetLength();
     for (int i = 0; i < nLen; i += 2)
     {
         CString code = payload.Mid(i, 2);
-        int result = 0;
-        if (code == _T("01"))
-            result = 1;  // OK
-        else if (code == _T("02"))
-            result = 2;  // NG
-        else if (code == _T("03"))
-            result = 3;  // ERROR
-        else
-            result = 0;  // 未知
-        info.Results.push_back(result);
+        int slotCode = _ttoi(code);
+        info.Results.push_back(slotCode);  // keep 0 so index matches fixture slot
     }
 
     return TRUE;
