@@ -3,6 +3,9 @@
 
 #if _SYSTEM_AMTAFT_
 
+// 最多4个治具，固定最大数量
+const int MAX_JIG = 4;
+
 #include "DlgMainView.h"
 #include "VisionThread.h"
 #include "DFSInfo.h"
@@ -65,6 +68,13 @@ CVisionThread::CVisionThread()
 	// 初始化 ICW Start$ 发送标志
 	for (int i = 0; i < 4; i++)
 		m_bICWStartSent[i] = FALSE;
+
+	// 初始化 DefectCode Start/End 状态
+	for (int i = 0; i < ChMaxCount; i++)
+	{
+		m_bDefectCodeStart[i] = FALSE;
+		m_bDefectCodeEnd[i] = FALSE;
+	}
 
 	// ??? ICW ??????
 	theApp.m_ICWCommManager.SetStartCallback([this](const ICW_StartInfo& info) {
@@ -188,9 +198,14 @@ void CVisionThread::ThreadRun()
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionPcReceiver, 0, FALSE);
 			}
 
+			// 一次性读取所有治具的 VisionStart1 信号到缓存，避免在 VisionPanelCheck 和 SendICWStartMessage 中重复读取
+			BOOL startFlagsCache[4] = { FALSE, FALSE, FALSE, FALSE };
+			for (int jj = 0; jj < MAX_JIG; ++jj)
+				startFlagsCache[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
+
 			for (int ii = 0; ii < PanelMaxCount; ii++)
 			{
-				m_bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + ii);
+				m_bStartFlag = startFlagsCache[ii];  // 使用缓存的信号
 
 				// Panel StartFlag 状态变化时输出日志（避免刷屏）
 				if (m_bStartFlag == FALSE)
@@ -225,7 +240,7 @@ void CVisionThread::ThreadRun()
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + ii, OffSet_0, FALSE);
 						// 4-Line 系统使用 ICW 统一通信，无需区分 PC1/PC2
 						LogWrite(CStringSupport::FormatString(_T("[Vision] Calling VisionInspectionMethod Panel=%d"), ii), 0);
-						VisionInspectionMethod(ii, ii);
+						VisionInspectionMethod(ii, ii, startFlagsCache);  // 传入缓存的信号
 					}
 				}
 			}
@@ -572,18 +587,18 @@ void CVisionThread::VisionPanelCheck()
 // 格式: Start$ABCD$WXYZ@
 // - 前一组(ABCD) = 当前检测哪几个治具，有产品用序号(01~04)，无产品用00
 // - 后一组(WXYZ) = 最多可检测哪几个治具(固定01020304)
+// - startFlagsCache[] = 各治具的 VisionStart1 信号缓存（在调用处统一读取）
 // 例: Start$01020304$01020304@ (检测4片)
 //     Start$01020000$01020304@ (只检测01和02)
 ///////////////////////////////////////////////////////////////////////////////
-void CVisionThread::SendICWStartMessage(BOOL bSimulation)
+void CVisionThread::SendICWStartMessage(BOOL bSimulation, const BOOL startFlagsCache[4])
 {
 #if _SYSTEM_AMTAFT_
 	LogWrite(_T("[ICW Start$] ========== SendICWStartMessage 开始 =========="), 0);
 	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Simulation=%d, ICW Connected=%d"),
 		bSimulation, theApp.m_ICWCommManager.IsConnected()), 0);
 
-	// 最多4个治具，固定最大数量
-	const int MAX_JIG = 4;
+	// 最多4个治具，固定最大数量（MAX_JIG 在文件顶部定义）
 	CString strCurrentJigs = _T("");   // 当前检测的治具
 	CString strMaxJigs = _T("");        // 最大治具数量
 
@@ -596,10 +611,18 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation)
 	}
 	else
 	{
-		// 使用 eBitType_VisionStart1 位信号判断治具
+		// 如果外部传入了缓存，使用缓存；否则内部直接读取
 		BOOL startFlags[4] = { FALSE, FALSE, FALSE, FALSE };
-		for (int jj = 0; jj < MAX_JIG; ++jj)
-			startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
+		if (startFlagsCache != NULL)
+		{
+			for (int jj = 0; jj < MAX_JIG; ++jj)
+				startFlags[jj] = startFlagsCache[jj];
+		}
+		else
+		{
+			for (int jj = 0; jj < MAX_JIG; ++jj)
+				startFlags[jj] = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_VisionStart1, OffSet_0 + jj);
+		}
 
 		for (int i = 0; i < MAX_JIG; i++)
 		{
@@ -659,7 +682,7 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation)
 #endif
 }
 
-void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
+void CVisionThread::VisionInspectionMethod(int Num, int panelNum, const BOOL startFlagsCache[4])
 {
 	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Panel=%d Start"), panelNum), 0);
 	if (theApp.m_CurrentIndexZone < 0)
@@ -717,24 +740,17 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum)
 
 #if _SYSTEM_AMTAFT_
 	// 发送 ICW Start$ 消息给点灯检系统（仅在第一个治具时发送一次）
+	// 注意：此处传入 startFlagsCache，让 SendICWStartMessage 使用主循环缓存的信号
 	if (/*panelNum == 0 &&*/ !m_bICWStartSent[0])
 	{
 		LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Send ICW Start Message (AutoTestMode=%d)"), theApp.m_iAutoTestMode == 1), 0);
-		SendICWStartMessage(theApp.m_iAutoTestMode == 1);
+		SendICWStartMessage(theApp.m_iAutoTestMode == 1, startFlagsCache);
 		m_bICWStartSent[0] = TRUE;
 	}
 #endif
 
-	LogWrite(CStringSupport::FormatString(_T("%s Panel %d [%s][%s] Vision Grab Start"), PG_IndexName[iCurIndex], Num, strPanel, strFpcID), Num);
-
-	BOOL bFlag = VisionVecAdd(strPanel, strFpcID, panelNum, indexPanelNum, Num, iCurIndex, strUniqueID);
-	if (bFlag)
-	{
-		//// 旧的 MC_INSPECTION_START 发送 (已废弃，现使用 ICW)
-		//LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Send MC_INSPECTION_START: %s"), sendMsg), 0);
-		//sendMsg.Format(_T("%d,%s,%d,%s,%s"), MC_INSPECTION_START, strPanel, indexPanelNum, strProcessID, strFpcID);
-		//SocketSendto(Num, sendMsg, MC_INSPECTION_START);
-	}
+	// 统一调用 AddJigToInspection 处理当前治具
+	AddJigToInspection(panelNum);
 }
 
 // 旧的 Vision Socket 解析函数已废弃（现使用 ICW）
@@ -984,6 +1000,20 @@ void CVisionThread::VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, i
 	theApp.m_ICWCommManager.SendFinishInfoAuto(finishInfo);
 
 	LogWrite(CStringSupport::FormatString(_T("Panel %d %s Vision Result %s"), Num, strPanelID, ResultMsg), Num);
+
+	// Release slot: set m_bResult=TRUE so the slot can be reused
+	for (auto &InspResult : theApp.m_lastInspResultVec)
+	{
+		if (!InspResult.m_cellId.CompareNoCase(strPanelID))
+		{
+			InspResult.m_bResult = TRUE;
+			InspResult.time_check.StopTimer();
+			InspResult.m_bInspStart = FALSE;
+			LogWrite(CStringSupport::FormatString(_T("[VisionPLCResult] Slot released: PanelID=%s, Jig=%d"),
+				strPanelID, iPanelNum), 0);
+			break;
+		}
+	}
 }
 
 BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex, const CString& strUniqueID)
@@ -993,12 +1023,11 @@ BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelN
 	panelData.Reset();
 
 	panelData.m_bInspStart = TRUE;
-	if (theApp.m_iTimer[VisionGrabTimer] == 0)
-		panelData.time_check.SetCheckTime(8000);
-	else
-		panelData.time_check.SetCheckTime(theApp.m_iTimer[VisionGrabTimer] * 1000);
-
+	int iTimeoutMs = (theApp.m_iTimer[VisionGrabTimer] == 0) ? 40000 : theApp.m_iTimer[VisionGrabTimer] * 1000;
+	panelData.time_check.SetCheckTime(iTimeoutMs);
 	panelData.time_check.StartTimer();
+	LogWrite(CStringSupport::FormatString(_T("[VisionVecAdd] Jig %d: Set timeout=%d ms (TimerCfg=%d)"),
+		iPanelNum + 1, iTimeoutMs, theApp.m_iTimer[VisionGrabTimer]), 0);
 	panelData.m_iIndexPanelNum = iIndexNum;
 	panelData.m_iPanelNum = iPanelNum;
 	panelData.m_iPCNum = iPCNo;
@@ -1027,10 +1056,60 @@ BOOL CVisionThread::VisionVecAdd(CString strPanel, CString strFpcID, int iPanelN
 			InspResult = panelData;
 			break;
 		}
-			
+
 	}
 
 	return flag;
+}
+
+void CVisionThread::AddJigToInspection(int panelNum)
+{
+	// 读取 PLC 数据
+	PanelData pPanelData;
+	FpcIDData pFpcData;
+	theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_VisionPanel1 + panelNum, &pPanelData);
+	theApp.m_pEqIf->m_pMNetH->GetFpcIdData(eWordType_VisionFpcID1 + panelNum, &pFpcData);
+	CString strPanel = CStringSupport::ToWString(pPanelData.m_PanelData, sizeof(pPanelData.m_PanelData));
+	CString strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
+	int Num = panelNum;  // 治具号
+	int iCurIndex = 0;
+	int indexPanelNum = 0;
+
+	if (strPanel.IsEmpty())
+		strPanel = strFpcID;
+
+	if (strFpcID.IsEmpty())
+	{
+		LogWrite(CStringSupport::FormatString(_T("[AddJigToInspection] Panel=%d Error: FPC ID Empty"), panelNum), 0);
+		VisionPLCResult(Num, panelNum, CStringSupport::FormatString(_T("PLC Vision Panel #%d ID Error"), panelNum), m_codePlcSendReceiverError, _T("NG"));
+		return;
+	}
+
+	theApp.IndexCheck();
+	iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - CZone)) % 4;
+	indexPanelNum = theApp.m_indexList[iCurIndex].m_indexNum + panelNum;
+
+	// 生成 UniqueID
+	CString strMarkID;
+	strMarkID.Format(_T("%02d"), panelNum + 1);   // 治具号 01~04
+	CString strUniqueID = GetDBInterface().GenerateUniqueIDForJig(panelNum);
+	LogWrite(CStringSupport::FormatString(_T("[AddJigToInspection] Jig %d: Generate UniqueID=%s"), panelNum + 1, strUniqueID), 0);
+
+	// 更新 IDMap
+	if (GetDBInterface().IsConnected())
+	{
+		if (!GetDBInterface().UpsertIDMapBeforeStart(strMarkID, panelNum, strUniqueID, strPanel, strMarkID))
+			LogWrite(CStringSupport::FormatString(_T("[AddJigToInspection] Jig %d: UpsertIDMap failed: %s"), panelNum, GetDBInterface().GetLastError()), Num);
+	}
+
+	// 添加到检测队列
+	LogWrite(CStringSupport::FormatString(_T("%s Panel %d [%s][%s] Vision Grab Start"), PG_IndexName[iCurIndex], Num, strPanel, strFpcID), Num);
+	BOOL bFlag = VisionVecAdd(strPanel, strFpcID, panelNum, indexPanelNum, Num, iCurIndex, strUniqueID);
+	if (bFlag)
+	{
+		LogWrite(CStringSupport::FormatString(_T("[AddJigToInspection] Jig %d: VisionVecAdd OK, Panel=%s, FpcID=%s"),
+			panelNum + 1, (LPCTSTR)strPanel, (LPCTSTR)strFpcID), Num);
+	}
 }
 
 void CVisionThread::AutoFocusAxis(int Num, int iCommand, CString strContents)
@@ -1205,15 +1284,29 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 				nFixtureNo, inspResult.SysID), nFixtureNo - 1);
 		}
 
-		// Step 3: 写入 PLC 主结果（PreGammaResult）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step3 - 写入 PLC PreGammaResult"), nFixtureNo), nFixtureNo - 1);
-		int nPlcResult = (nResult == 1) ? m_codeOk : m_codeFail;  // 1=OK, 2=NG/ERROR
-		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_PreGammaResult1 + (nFixtureNo - 1), &nPlcResult);
-		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC PreGammaResult%d = %d"), nFixtureNo, nPlcResult), 0);
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step3 完成 - PreGammaResult=%d (%s)"),
-			nFixtureNo, nPlcResult, nPlcResult == m_codeOk ? _T("OK") : _T("NG")), nFixtureNo - 1);
+		// Step 3: 确定 PLC 检测结果（OK/NG）
+		// 优先使用数据库 IVS_LCD_InspectionResult.AOIResult 覆盖 FN$ 结果
+		int nPlcResult;
+		if (!strUniqueID.IsEmpty() && inspResult.SysID > 0 && !inspResult.AOIResult.IsEmpty())
+		{
+			if (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0)
+				nPlcResult = m_codeOk;
+			else
+				nPlcResult = m_codeFail;
 
-		// Step 4: 查询 ivs_lcd_aoidefect（获取缺陷详情）
+			LogWrite(CStringSupport::FormatString(_T("[ICW] Fixture %d: 使用数据库检测结果 - AOIResult=%s -> nPlcResult=%d"),
+				nFixtureNo, (LPCTSTR)inspResult.AOIResult, nPlcResult), 0);
+			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step3 完成 - AOIResult=%s -> nPlcResult=%d (%s)"),
+				nFixtureNo, (LPCTSTR)inspResult.AOIResult, nPlcResult, nPlcResult == m_codeOk ? _T("OK") : _T("NG")), nFixtureNo - 1);
+		}
+		else
+		{
+			nPlcResult = (nResult == 1) ? m_codeOk : m_codeFail;
+			LogWrite(CStringSupport::FormatString(_T("[ICW] Fixture %d: 无数据库记录，使用FN$结果=%d -> nPlcResult=%d"),
+				nFixtureNo, nResult, nPlcResult), 0);
+		}
+
+		// Step 4: 查询 ivs_lcd_aoidefect（获取缺陷详情和等级）
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 - 查询 ivs_lcd_aoidefect"), nFixtureNo), nFixtureNo - 1);
 		CDefectInfoList defectList;
 		CString strDefectCode = _T("");
@@ -1221,7 +1314,6 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 
 		if (!strUniqueID.IsEmpty() && inspResult.SysID > 0)
 		{
-			// 通过 GUID 查询缺陷
 			if (GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
 			{
 				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 完成 - 找到 %d 个缺陷"),
@@ -1249,25 +1341,107 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 跳过 - UniqueID 为空或无检测记录"), nFixtureNo), nFixtureNo - 1);
 		}
 
-		// Step 5: 写入 PLC 缺陷代码 + 等级
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 - 写入 PLC VisionResult"), nFixtureNo), nFixtureNo - 1);
-		// 写入 VisionResult1~4（对应治具 1~4）
-		int nVisionResult = nPlcResult;  // 默认用主结果
+		// Step 5: 写入 SendNgBufferResult（用于产品流向分类）
+		// iSendNGBuffer 值含义：
+		// 1 = OK Buffer（检测合格）
+		// 2 = NG Buffer 1（等级0的缺陷：A/R1）
+		// 3 = NG Buffer 2（等级1的缺陷：B/R2）
+		// 4 = NG Buffer 3（等级2的缺陷：C/R3）
+		// 5 = NG Buffer 4（等级3的缺陷：R4）
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 - 写入 SendNgBufferResult"), nFixtureNo), nFixtureNo - 1);
+		int nSendNGBuffer = 0;
+		if (nPlcResult == m_codeOk)
+		{
+			nSendNGBuffer = 1;  // OK Buffer
+		}
+		else if (!strGrade.IsEmpty())
+		{
+			// 缺陷等级转换为数值：Grade A=0最优, B=1, C=2, R1=0, R2=1, R3=2, R4=3...
+			int nNGGrade = 0;
+			if (strGrade.GetLength() >= 2 && strGrade[0] == _T('R'))
+			{
+				nNGGrade = _ttoi(strGrade.Mid(1)) - 1;  // R1=0, R2=1, R3=2...
+				if (nNGGrade < 0) nNGGrade = 0;
+				if (nNGGrade > 3) nNGGrade = 3;
+			}
+			else if (strGrade.GetLength() >= 1)
+			{
+				if (strGrade[0] >= _T('A') && strGrade[0] <= _T('C'))
+					nNGGrade = strGrade[0] - _T('A');
+				else
+					nNGGrade = 0;
+			}
+			nSendNGBuffer = nNGGrade + 2;
+		}
+		else
+		{
+			nSendNGBuffer = 2;  // 无等级信息，默认 NG Buffer 1
+		}
+		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_SendNgBufferResult1 + (nFixtureNo - 1), &nSendNGBuffer);
+		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC SendNgBufferResult%d = %d (Grade=%s -> Buffer=%d)"),
+			nFixtureNo, nSendNGBuffer, (LPCTSTR)strGrade, nSendNGBuffer), 0);
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 完成 - SendNgBufferResult=%d"),
+			nFixtureNo, nSendNGBuffer), nFixtureNo - 1);
+
+		// Step 6: 写入 VisionResult（PLC 主结果）
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 - 写入 VisionResult"), nFixtureNo), nFixtureNo - 1);
+		int nVisionResult = nPlcResult;
 		if (!strDefectCode.IsEmpty())
 		{
-			// 如果有缺陷码，设置 NG
 			nVisionResult = m_codeFail;
 		}
 		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + (nFixtureNo - 1), &nVisionResult);
 		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC VisionResult%d = %d (DefectCode=%s, Grade=%s)"),
 			nFixtureNo, nVisionResult, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), 0);
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 完成 - VisionResult=%d, DefectCode=%s, Grade=%s"),
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 完成 - VisionResult=%d, DefectCode=%s, Grade=%s"),
 			nFixtureNo, nVisionResult, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), nFixtureNo - 1);
 
 		// 写入缺陷码（如果有的话，存储到 PLC 对应区域）
+		// 参考 PlcThread 的 DefectCodeStart 逻辑：检测 Start bit 上升沿，写入数据后设置 End bit
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 - DefectCode 握手处理"), nFixtureNo), nFixtureNo - 1);
+
+		// 读取 PLC DefectCodeStart bit（与 PlcThread 逻辑一致）
+		//BOOL bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_DefectCodeStart1 + (nFixtureNo - 1), OffSet_0);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: DefectCodeStart=%d, Previous=%d"),
+		//	nFixtureNo, bStartFlag, m_bDefectCodeStart[nFixtureNo - 1]), nFixtureNo - 1);
+
+		//// 如果 Start bit = FALSE，设置 End bit = FALSE
+		//if (bStartFlag == FALSE)
+		//{
+		//	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + (nFixtureNo - 1), OffSet_0, FALSE);
+		//}
+
+		//// 检测 Start 信号的上升沿（从 FALSE → TRUE）
+		//if (m_bDefectCodeStart[nFixtureNo - 1] == !bStartFlag)
+		//{
+		//	m_bDefectCodeStart[nFixtureNo - 1] = bStartFlag;
+
+		//	if (bStartFlag == TRUE)
+		//	{
+		//		// 上升沿：PLC 请求读取 DefectCode，清除 End bit
+		//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + (nFixtureNo - 1), OffSet_0, FALSE);
+
+		//		// 写入 DefectCode 和 Grade 到 PLC
+		//		if (!strDefectCode.IsEmpty())
+		//		{
+		//			DefectCodeRank pDefectCodeRank;
+		//			DefectGradeRank pDefectGradeRank;
+		//			CStringSupport::ToAString(strDefectCode, pDefectCodeRank.m_DefectCode, sizeof(pDefectCodeRank.m_DefectCode));
+		//			CStringSupport::ToAString(strGrade, pDefectGradeRank.m_DefectGrade, sizeof(pDefectGradeRank.m_DefectGrade));
+		//			theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + (nFixtureNo - 1), &pDefectCodeRank);
+		//			theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + (nFixtureNo - 1), &pDefectGradeRank);
+		//			LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC DefectCodeResult%d=%s, DefectGradeResult%d=%s"),
+		//				nFixtureNo, (LPCTSTR)strDefectCode, nFixtureNo, (LPCTSTR)strGrade), 0);
+		//		}
+
+		//		// 设置 DefectCodeEnd bit = TRUE（表示数据已写入）
+		//		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + (nFixtureNo - 1), OffSet_0, TRUE);
+		//		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Set DefectCodeEnd=TRUE"), nFixtureNo), nFixtureNo - 1);
+		//	}
+		//}
+
 		if (!strDefectCode.IsEmpty())
 		{
-			// TODO: 根据现场 PLC 地址规划写入缺陷码
 			LogWrite(CStringSupport::FormatString(_T("[ICW] Defect for fixture %d: Code=%s, Grade=%s"),
 				nFixtureNo, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), 0);
 		}

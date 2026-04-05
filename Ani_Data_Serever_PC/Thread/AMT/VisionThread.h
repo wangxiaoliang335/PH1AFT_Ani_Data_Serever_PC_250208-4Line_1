@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Ani_Data_Serever_PC.h"
 
@@ -26,7 +26,7 @@ public:
 	// 旧的 Vision PC 初始化检查（已废弃，现使用 ICW）
 	//void VisionFirstCheckMethod(int Num);
 	void VisionCheckMethod(int Num);
-	void VisionInspectionMethod(int Num, int panelNum);
+	void VisionInspectionMethod(int Num, int panelNum, const BOOL startFlagsCache[4] = NULL);
 	void ParsingGrabEnd(int Num, CString strContents);
 	void ParsingInspectionResult(int Num, CString strContents);
 	void ParsingModelRequest(int Num, CString strContents);
@@ -51,7 +51,9 @@ public:
 
 	// 发送 ICW Start$ 消息（包含所有治具信息）
 	// bSimulation: TRUE=模拟模式直接发送所有槽位，FALSE=从PLC读取实际槽位状态
-	void SendICWStartMessage(BOOL bSimulation = FALSE);
+	// startFlagsCache: 各治具的 VisionStart1 信号缓存（在调用处统一读取，避免重复读取PLC）
+	//                  如果传 NULL，则内部直接从 PLC 读取
+	void SendICWStartMessage(BOOL bSimulation, const BOOL startFlagsCache[4]);
 
 	// 检查 ICW Start$ 是否正在等待响应（用于防止重复发送）
 	BOOL IsICWStartInProgress() const
@@ -106,6 +108,13 @@ private:
 
 	BOOL m_bAutoFocusStart[MaxCamCount];
 	BOOL m_bAutoFocusStartFlag;
+
+	// DefectCode 状态跟踪（对应 PLC DefectCodeStart/End bits）
+	BOOL m_bDefectCodeStart[ChMaxCount];
+	BOOL m_bDefectCodeEnd[ChMaxCount];
+
+	// 添加单个治具到检测队列（由 VisionInspectionMethod 统一调用）
+	void AddJigToInspection(int panelNum);
 
 };
 
