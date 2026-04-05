@@ -25,13 +25,36 @@ CICWCommManager::CICWCommManager()
     , m_cbGetVersion(nullptr)
     , m_bAutoReconnectThreadRunning(FALSE)
     , m_nReconnectAttempts(0)
+    , m_nReconnectIntervalMs(ICW_RECONNECT_INTERVAL_MS_DEFAULT)
     , m_hReconnectThread(NULL)
     , m_hReconnectQuitEvent(NULL)
 {
     InitializeCriticalSection(&m_csRecv);
     InitializeCriticalSection(&m_csSend);
     InitializeCriticalSection(&m_csReconnect);
+    InitializeCriticalSection(&m_csDebounce);
     m_hReconnectQuitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    m_bPendingDisconnect = FALSE;
+    m_dwDisconnectTime = 0;
+
+    // 从配置文件读取 ICW 重连间隔
+    LoadConfig();
+}
+
+void CICWCommManager::LoadConfig()
+{
+    TCHAR szExePath[MAX_PATH] = { 0 };
+    ::GetModuleFileName(NULL, szExePath, MAX_PATH);
+    CString strExePath = szExePath;
+    int nPos = strExePath.ReverseFind(_T('\\'));
+    if (nPos > 0)
+        strExePath = strExePath.Left(nPos);
+    CString strConfigPath = strExePath + _T("\\Logger.cfg");
+
+    m_nReconnectIntervalMs = GetPrivateProfileInt(_T("ICW"), _T("Reconnect Interval Ms"),
+        ICW_RECONNECT_INTERVAL_MS_DEFAULT, strConfigPath);
+    TRACE(_T("ICWCommManager: LoadConfig - ReconnectInterval=%d ms, ConfigPath=%s\n"),
+        m_nReconnectIntervalMs, strConfigPath);
 }
 
 CICWCommManager::~CICWCommManager()
@@ -329,6 +352,11 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
     {
     case EVT_CONSUCCESS:
         TRACE(_T("ICWCommManager: Client connected\n"));
+        // 重连成功，清除防抖标志
+        EnterCriticalSection(&m_csDebounce);
+        m_bPendingDisconnect = FALSE;
+        m_dwDisconnectTime = 0;
+        LeaveCriticalSection(&m_csDebounce);
         if (m_hParentWnd)
         {
             ::PostMessage(m_hParentWnd, WM_ICW_CONNECTED, 0, 0);
@@ -337,11 +365,25 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
         
     case EVT_CONDROP:
         TRACE(_T("ICWCommManager: Client disconnected\n"));
+        
+        // TODO: 防抖机制暂时注释，待网络稳定后启用
+        //if (m_bPendingDisconnect && 
+        //    (dwNow - m_dwDisconnectTime) < DISCONNECT_DEBOUNCE_MS)
+        //{
+        //    TRACE(_T("ICWCommManager: 断开抖动忽略 (距离上次断开 %d ms < %d ms)\n"),
+        //        dwNow - m_dwDisconnectTime, DISCONNECT_DEBOUNCE_MS);
+        //    break;
+        //}
+        //m_bPendingDisconnect = TRUE;
+        //m_dwDisconnectTime = dwNow;
+        
         m_bConnected = FALSE;
+        
         if (m_hParentWnd)
         {
             ::PostMessage(m_hParentWnd, WM_ICW_DISCONNECTED, 0, 0);
         }
+        
         // 清空接收缓冲区
         EnterCriticalSection(&m_csRecv);
         m_strRecvBuffer.Empty();
@@ -560,11 +602,11 @@ unsigned int WINAPI CICWCommManager::ReconnectThreadProc(LPVOID lpParam)
         }
         else
         {
-            TRACE(_T("ICWCommManager: 重连失败，%d ms后再次尝试\n"), ICW_RECONNECT_INTERVAL_MS);
+            TRACE(_T("ICWCommManager: 重连失败，%d ms后再次尝试\n"), pThis->m_nReconnectIntervalMs);
         }
 
         // 等待间隔
-        dwWait = WaitForSingleObject(pThis->m_hReconnectQuitEvent, ICW_RECONNECT_INTERVAL_MS);
+        dwWait = WaitForSingleObject(pThis->m_hReconnectQuitEvent, pThis->m_nReconnectIntervalMs);
         if (dwWait == WAIT_OBJECT_0)
         {
             TRACE(_T("ICWCommManager: 重连等待期间收到退出信号\n"));
@@ -610,7 +652,13 @@ BOOL CICWCommManager::ReconnectNow()
 
     m_bConnected = TRUE;
     m_strRecvBuffer.Empty();
-
+    
+    // 重连成功，清除防抖标志
+    EnterCriticalSection(&m_csDebounce);
+    m_bPendingDisconnect = FALSE;
+    m_dwDisconnectTime = 0;
+    LeaveCriticalSection(&m_csDebounce);
+    
     TRACE(_T("ICWCommManager: ReconnectNow - 成功重连到 %s:%s\n"), m_strServerIP, m_strServerPort);
 
     // 通知父窗口
