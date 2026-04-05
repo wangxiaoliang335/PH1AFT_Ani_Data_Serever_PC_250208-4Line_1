@@ -1470,9 +1470,11 @@ BOOL CDBInterface::QueryDefectCodeByBarcode(const CString& strBarcode, CString& 
         _T("       Code_AutoReview, Grade_AutoReview, ")
         _T("       Code_AOI, Grade_AOI ")
         _T("FROM IVS_LCD_InspectionResult ")
-        _T("WHERE ScreenID = '%s' AND Status = 'Finish' ")
+        _T("WHERE ScreenID = '%s' ")
         _T("ORDER BY StartTime DESC LIMIT 1"),
         EscapeString(strBarcode));
+
+    TRACE(_T("QueryDefectCodeByBarcode SQL: %s\n"), strSQL);
 
     SQLHSTMT hStmt;
     if (!ExecuteQuery(strSQL, hStmt))
