@@ -76,6 +76,9 @@ CVisionThread::CVisionThread()
 		m_bDefectCodeEnd[i] = FALSE;
 	}
 
+	// 初始化 ICW 断线日志去重标志
+	m_bICWDisconnectedLogged = FALSE;
+
 	// ??? ICW ??????
 	theApp.m_ICWCommManager.SetStartCallback([this](const ICW_StartInfo& info) {
 		OnICWStart(info);
@@ -133,6 +136,12 @@ void CVisionThread::ThreadRun()
 
 		if (bICWConnected || theApp.m_AOIPassMode)
 		{
+			// ICW 重新连接时，重置断线日志去重标志，下次断线时可以再次打印
+			if (m_bICWDisconnectedLogged)
+			{
+				m_bICWDisconnectedLogged = FALSE;
+				LogWrite(_T("[Vision] ICW Reconnected, Reset VisionPCStatus and FirstStatus"), 0);
+			}
 			if (m_bFirstStatus)
 			{
 				LogWrite(_T("[Vision] First Status - Initializing"), 0);
@@ -328,7 +337,12 @@ void CVisionThread::ThreadRun()
 		}
 		else
 		{
-			LogWrite(_T("[Vision] ICW Disconnected, Reset VisionPCStatus and FirstStatus"), 0);
+			// 仅在首次检测到断线时打印一次，防止日志刷屏
+			if (!m_bICWDisconnectedLogged)
+			{
+				LogWrite(_T("[Vision] ICW Disconnected, Reset VisionPCStatus and FirstStatus"), 0);
+				m_bICWDisconnectedLogged = TRUE;
+			}
 			theApp.m_VisionPCStatus[0] = FALSE;
 			theApp.m_VisionPCStatus[1] = FALSE;
 			m_bFirstStatus = TRUE;
@@ -1306,39 +1320,21 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 				nFixtureNo, nResult, nPlcResult), 0);
 		}
 
-		// Step 4: 查询 ivs_lcd_aoidefect（获取缺陷详情和等级）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 - 查询 ivs_lcd_aoidefect"), nFixtureNo), nFixtureNo - 1);
-		CDefectInfoList defectList;
-		CString strDefectCode = _T("");
-		CString strGrade = _T("");
+		// Step 4: 从 IVS_LCD_InspectionResult 读取缺陷码和等级（已在 Step2 查询得到）
+		// 无需再查 ivs_lcd_aoidefect，直接使用 inspResult 中的字段
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 - 从 InspectionResult 读取缺陷码"),
+			nFixtureNo), nFixtureNo - 1);
+		CString strDefectCode = inspResult.Code_AOI;
+		CString strGrade = inspResult.Grade_AOI;
 
-		if (!strUniqueID.IsEmpty() && inspResult.SysID > 0)
+		if (!strDefectCode.IsEmpty())
 		{
-			if (GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
-			{
-				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 完成 - 找到 %d 个缺陷"),
-					nFixtureNo, (int)defectList.size()), nFixtureNo - 1);
-				// 汇总缺陷码和等级（取最严重）
-				for (const auto& defect : defectList)
-				{
-					if (!defect.Code_AOI.IsEmpty())
-					{
-						if (strDefectCode.IsEmpty() || defect.Grade_AOI.CompareNoCase(_T("A")) < 0)
-						{
-							strDefectCode = defect.Code_AOI;
-							strGrade = defect.Grade_AOI;
-						}
-					}
-				}
-			}
-			else
-			{
-				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 完成 - 无缺陷记录"), nFixtureNo), nFixtureNo - 1);
-			}
+			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 完成 - DefectCode=%s, Grade=%s"),
+				nFixtureNo, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), nFixtureNo - 1);
 		}
 		else
 		{
-			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 跳过 - UniqueID 为空或无检测记录"), nFixtureNo), nFixtureNo - 1);
+			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 完成 - 无缺陷码或等级"), nFixtureNo), nFixtureNo - 1);
 		}
 
 		// Step 5: 写入 SendNgBufferResult（用于产品流向分类）
@@ -1395,6 +1391,11 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			nFixtureNo, nVisionResult, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), 0);
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 完成 - VisionResult=%d, DefectCode=%s, Grade=%s"),
 			nFixtureNo, nVisionResult, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), nFixtureNo - 1);
+
+		// Step 7: 设置 VisionEnd 信号（点灯检完成标志，通知 PLC 取走结果）
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + (nFixtureNo - 1), OffSet_0, TRUE);
+		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC VisionEnd%d = TRUE"), nFixtureNo), 0);
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step7 完成 - VisionEnd=TRUE"), nFixtureNo), nFixtureNo - 1);
 
 		// 写入缺陷码（如果有的话，存储到 PLC 对应区域）
 		// 参考 PlcThread 的 DefectCodeStart 逻辑：检测 Start bit 上升沿，写入数据后设置 End bit
@@ -1482,6 +1483,19 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 
 		LogWrite(CStringSupport::FormatString(
 			_T("[ICW FN$] 治具 %d: ========== 处理完成 =========="), nFixtureNo), nFixtureNo - 1);
+
+		// 【Bug1 修复】停止该槽位的超时计时器，并设置 m_bResult=TRUE
+		// 防止 30 秒超时定时器在 FN$ 正常完成后仍然触发 VisionPLCResult(TimeOut)
+		for (auto& insp : theApp.m_lastInspResultVec)
+		{
+			if (insp.m_bInspStart == TRUE && insp.m_iPCNum == nFixtureNo - 1)
+			{
+				insp.time_check.StopTimer();
+				insp.m_bResult = TRUE;
+				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Stop timer, m_bResult=TRUE (prevent timeout override)"), nFixtureNo), 0);
+				break;
+			}
+		}
 	}
 
 	LogWrite(_T("[ICW FN$] ========== FN$ 处理完成 =========="), 0);
