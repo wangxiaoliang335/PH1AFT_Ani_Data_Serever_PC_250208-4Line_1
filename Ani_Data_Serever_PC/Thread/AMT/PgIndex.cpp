@@ -74,18 +74,14 @@ void CPgIndex::ThreadRun()
 		s_dwLastPg1LogTime = dwCurrentTime;
 	}
 
-	// PLC 连接状态变化检测（避免日志刷屏）
+	// PLC 连接状态变化检测（仅状态变化时记录，不再定时刷屏）
 	static BOOL s_bLastPlcConnected = FALSE;
-	static DWORD s_dwLastPlcLogTime = 0;
-	const DWORD PLC_LOG_INTERVAL_MS = 60000; // 1分钟
-	if (theApp.m_PlcConectStatus != s_bLastPlcConnected ||
-		(dwCurrentTime - s_dwLastPlcLogTime > PLC_LOG_INTERVAL_MS))
+	if (theApp.m_PlcConectStatus != s_bLastPlcConnected)
 	{
 		CString strStatus = theApp.m_PlcConectStatus ? _T("Connected") : _T("Disconnected");
 		theApp.m_PlcThread->LogWrite(
 			CStringSupport::FormatString(_T("[%s] PLC Status = %s"), m_strIndexName, strStatus), FALSE);
 		s_bLastPlcConnected = theApp.m_PlcConectStatus;
-		s_dwLastPlcLogTime = dwCurrentTime;
 	}
 
 	//if (theApp.m_bAllPassMode)
