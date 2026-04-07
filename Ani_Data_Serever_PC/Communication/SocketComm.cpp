@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////////
 //  File:       SocketComm.cpp
 //  Version:    1.4
 //
@@ -31,6 +31,7 @@
 #include <tchar.h>
 #include <process.h>
 #include <crtdbg.h>
+#include <Mstcpip.h>
 #include "SocketComm.h"
 #include "Ani_Data_Serever_PC.h"
 
@@ -598,73 +599,90 @@ bool CSocketComm::CreateSocketEx(LPCTSTR strHost, LPCTSTR strServiceName, int nF
 {
 	// Socket is already opened
 	if (IsOpen())
+	{
+		TRACE(_T("[CreateSocketEx] FAILED - Socket already open, m_hComm:0x%X\r\n"), m_hComm);
 		return false;
+	}
 
 	// Create a Socket that is bound to a specific service provide
 	// nFamily: (AF_INET)
 	// nType: (SOCK_STREAM, SOCK_DGRAM)
 	SOCKET sock = socket(nFamily, nType, IPPROTO_IP);
-	if (INVALID_SOCKET != sock)
+	
+	// 诊断：记录 socket() 的结果和错误码
+	int nSocketErr = WSAGetLastError();
+	TRACE(_T("[CreateSocketEx] socket() = 0x%X, WSAError:%d\r\n"), sock, nSocketErr);
+	
+	if (INVALID_SOCKET == sock)
 	{
-		if (uOptions & SO_REUSEADDR)
-		{
-			// Inform Windows Sockets provider that a bind on a socket should not be disallowed
-			// because the desired address is already in use by another socket
-			BOOL optval = TRUE;
-			if (SOCKET_ERROR == setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(BOOL)))
-			{
-				closesocket(sock);
-				return false;
-			}
-		}
+		TRACE(_T("[CreateSocketEx] socket() FAILED, Error:%d\r\n"), nSocketErr);
+		return false;
+	}
 
-		if (nType == SOCK_DGRAM)
+	if (uOptions & SO_REUSEADDR)
+	{
+		// Inform Windows Sockets provider that a bind on a socket should not be disallowed
+		// because the desired address is already in use by another socket
+		BOOL optval = TRUE;
+		if (SOCKET_ERROR == setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(BOOL)))
 		{
-			if (uOptions & SO_BROADCAST)
-			{
-				// Inform Windows Sockets provider that broadcast messages are allowed
-				BOOL optval = TRUE;
-				if (SOCKET_ERROR == setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *)&optval, sizeof(BOOL)))
-				{
-					closesocket(sock);
-					return false;
-				}
-			}
-		}
-
-		// Associate a local address with the socket
-		SockAddrIn sockAddr;
-		if (SOCK_DGRAM == nType){
-			sockAddr.CreateFrom(strHost, strServiceName, nFamily);
-		}
-		if (m_bMelsecSimulaion){
-			// 160925 jwan - TCP ???? ???????? ??? ?????.
-			memset(&sockAddr, 0, sizeof(sockAddr));
-			sockAddr.sin_family = AF_INET;
-			sockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-			sockAddr.sin_port = htons(_ttoi(strServiceName));
-		}
-
-		int nBindResult = ::bind(sock, sockAddr, (int)sockAddr.Size());
-		if (SOCKET_ERROR == nBindResult)
-		{
+			int nError = WSAGetLastError();
+			TRACE(_T("[CreateSocketEx] setsockopt SO_REUSEADDR FAILED, Error:%d\r\n"), nError);
 			closesocket(sock);
 			return false;
 		}
+	}
 
-		// Listen to the socket, only valid for connection socket
-		if (SOCK_STREAM == nType)
+	if (nType == SOCK_DGRAM)
+	{
+		if (uOptions & SO_BROADCAST)
 		{
-			if (SOCKET_ERROR == listen(sock, SOMAXCONN))
+			// Inform Windows Sockets provider that broadcast messages are allowed
+			BOOL optval = TRUE;
+			if (SOCKET_ERROR == setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *)&optval, sizeof(BOOL)))
 			{
 				closesocket(sock);
 				return false;
 			}
 		}
-
-		// Success, now we may save this socket
-		m_hComm = (HANDLE)sock;
 	}
+
+	// Associate a local address with the socket
+	SockAddrIn sockAddr;
+	if (SOCK_DGRAM == nType){
+		sockAddr.CreateFrom(strHost, strServiceName, nFamily);
+	}
+	if (m_bMelsecSimulaion){
+		// 160925 jwan - TCP ???? ???????? ??? ?????.
+		memset(&sockAddr, 0, sizeof(sockAddr));
+		sockAddr.sin_family = AF_INET;
+		sockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		sockAddr.sin_port = htons(_ttoi(strServiceName));
+	}
+
+	int nBindResult = ::bind(sock, sockAddr, (int)sockAddr.Size());
+	if (SOCKET_ERROR == nBindResult)
+	{
+		int nError = WSAGetLastError();
+		TRACE(_T("[CreateSocketEx] bind FAILED, Error:%d, Port:%s\r\n"), nError, strServiceName);
+		closesocket(sock);
+		return false;
+	}
+
+	// Listen to the socket, only valid for connection socket
+	if (SOCK_STREAM == nType)
+	{
+		if (SOCKET_ERROR == listen(sock, SOMAXCONN))
+		{
+			int nError = WSAGetLastError();
+			TRACE(_T("[CreateSocketEx] listen FAILED, Error:%d\r\n"), nError);
+			closesocket(sock);
+			return false;
+		}
+	}
+
+	// Success, now we may save this socket
+	m_hComm = (HANDLE)sock;
 
 	return (INVALID_SOCKET != sock);
 }
@@ -712,6 +730,22 @@ bool CSocketComm::ConnectTo(LPCTSTR strDestination, LPCTSTR strServiceName, int 
 	SOCKET sock = socket(nFamily, nType, 0);
 	if (INVALID_SOCKET != sock)
 	{
+		// TCP Keep-Alive 设置（仅对 SOCK_STREAM 有效）
+		if (SOCK_STREAM == nType)
+		{
+			// 启用 TCP Keep-Alive
+			BOOL bKeepAlive = TRUE;
+			setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char*)&bKeepAlive, sizeof(bKeepAlive));
+
+			// 设置 Keep-Alive 参数
+			tcp_keepalive kl;
+			kl.onoff = 1;                              // 启用 Keep-Alive
+			kl.keepalivetime = 10000;                 // 10秒无数据后开始探测（默认 2 小时）
+			kl.keepaliveinterval = 3000;              // 每次探测间隔 3 秒（默认 1 秒）
+			DWORD dwBytesReturned = 0;
+			WSAIoctl(sock, SIO_KEEPALIVE_VALS, &kl, sizeof(kl), NULL, 0, &dwBytesReturned, NULL, NULL);
+		}
+
 		// Associate a local address with the socket
 		SockAddrIn sockAddr;
 		if (SOCK_DGRAM == nType){
@@ -1135,12 +1169,29 @@ void CSocketComm::Run()
 	}
 	SOCKET Accept;
 	Accept = (SOCKET)m_hComm;
+	SOCKET ListenSocket = Accept;  // 保存原始监听 socket
+	bool bServerMode = IsServer();
+	bool bNeedReCreateListenSocket = false;
+
 	//while (m_hThread != NULL)
 	while (m_hComm != INVALID_HANDLE_VALUE) //<< 20191028 kang
 	{
+		// Server 模式下，如果需要重新创建监听 socket
+		if (bServerMode && bNeedReCreateListenSocket && !bSmartAddressing)
+		{
+			// 先关闭旧的客户端 socket
+			if (m_hComm != INVALID_HANDLE_VALUE && m_hComm != (HANDLE)ListenSocket)
+			{
+				closesocket((SOCKET)m_hComm);
+			}
+			// 重新创建监听 socket
+			m_hComm = (HANDLE)ListenSocket;
+			bNeedReCreateListenSocket = false;
+		}
+
 		m_hComm = (HANDLE)Accept;
 		// Should we run as server mode
-		if (IsServer() && !bSmartAddressing)
+		if (bServerMode && !bSmartAddressing)
 		{
 			if (!IsBroadcast())
 			{
@@ -1189,8 +1240,18 @@ void CSocketComm::Run()
 					// 通知子类连接已断开
 					OnEvent(EVT_CONDROP, NULL);
 
-					// 关闭连接，防止重复触发 EVT_CONDROP
-					StopComm();
+					// Server 模式下不关闭连接，而是标记需要重新创建监听 socket
+					if (bServerMode)
+					{
+						// Server 模式：标记断开，让下次循环重新创建监听 socket
+						bNeedReCreateListenSocket = true;
+						break;
+					}
+					else
+					{
+						// 客户端模式：正常关闭连接
+						StopComm();
+					}
 				}
 
 				// special case for UDP, alert about the event but do not stop

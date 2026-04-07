@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 #if _SYSTEM_AMTAFT_
 #include "DlgMainView.h"
@@ -485,6 +485,8 @@ void CPgManager::AOIDataReceived(CString strContents)
 					{
 						theApp.m_pTestLog->LOG_INFO(_T("Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, InspResult.m_cellId);
 					}
+
+					//iSendNGBuffer = 2;   //test
 
 					theApp.m_pTestLog->LOG_INFO(_T("Flows Data Final: %s, Panel ID : %s,"), iSendNGBuffer == Flow_AfterMachine ? _T("OK Flow") : _T("NG Flow"), InspResult.m_cellId);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_AllZonePos1DirectionResult + iPanelNum, &iSendNGBuffer); /* 1 : go OK, 2 : go NG Buff*/
@@ -1035,14 +1037,13 @@ void CPgManager::OnEvent(UINT uEvent, LPVOID lpvData)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
+	// 先交给基类处理公共的断线重连逻辑
+	if (OnEventReconnectBase(uEvent))
+		return;
+
+	// 以下为 PG 业务相关事件的处理
 	switch (uEvent)
 	{
-	case EVT_CONDROP:
-		PgLogMessage(CStringSupport::FormatString(_T("PG Connect Drop")));
-		break;
-	case EVT_CONSUCCESS:
-		PgLogMessage(CStringSupport::FormatString(_T("PG Connect Success")));
-		break;
 	case EVT_ZEROLENGTH:
 		PgLogMessage(CStringSupport::FormatString(_T("PG EVT_ZEROLENGTH")));
 		break;
@@ -1057,21 +1058,16 @@ void CPgManager::OnEvent(UINT uEvent, LPVOID lpvData)
 
 BOOL CPgManager::getConectCheck()
 {
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	LONG  uAddr = addrin.GetIPAddr();
-	if (uAddr == 0)
-		return FALSE;	//Á¢¼Ó¾ÈÇÔ
-	else
-		return TRUE;	//Á¢¼ÓÇÔ
+	return getConectCheckBase();
 }
 
 bool CPgManager::SocketServerOpen(CString strServerPort, int iPcNum)
 {
+	SocketServerOpenBase(strServerPort);
+	m_iPcNum = iPcNum;
 	m_bMelsecSimulaion = true;
 	SetSmartAddressing(false);
 	SetServerState(true);
-	m_iPcNum = iPcNum;
 	bool ret = CreateSocket(strServerPort, AF_INET, SOCK_STREAM, 0);
 	if (ret) return WatchComm();
 	else return false;
@@ -1080,4 +1076,9 @@ bool CPgManager::SocketServerOpen(CString strServerPort, int iPcNum)
 void CPgManager::RemoveClient()
 {
 	ShutdownConnection((SOCKET)m_hComm);
+}
+
+void CPgManager::LogServerMsg(LPCTSTR szMsg)
+{
+	PgLogMessage(szMsg);
 }

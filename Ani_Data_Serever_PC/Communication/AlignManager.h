@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 ///////////////////////////////////////////////////////////////////////////////
 // FILE : AlignManager.h
@@ -36,12 +36,12 @@
 
 #include "Ani_Data_Serever_PC.h"
 //#include "ClientSocket.h"
-#include "SocketComm.h"
+#include "SocketServerBase.h"
 #include "EZini.h"
 #include "StringSupport.h"
 
 
-class CAlignManager : public CSocketComm
+class CAlignManager : public CSocketServerBase
 {
 public:
 	CAlignManager(int iAlignType, int iAlignTypeNum, int iAlignNum);
@@ -84,4 +84,9 @@ public:
 	int m_iAlignType;
 	int m_iAlignTypeNum;
 	int m_iAlignNum;
+
+protected:
+	// 实现基类的纯虚函数
+	virtual LPCTSTR GetDeviceName() const override { return _T("Align"); }
+	virtual void LogServerMsg(LPCTSTR szMsg) override;
 };

@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -22,17 +22,12 @@ CAlignManager::~CAlignManager()
 
 BOOL CAlignManager::getConectCheck()
 {
-	SockAddrIn addrin;
-	GetSockName(addrin);
-	LONG  uAddr = addrin.GetIPAddr();
-	if (uAddr == 0)
-		return FALSE;
-	else
-		return TRUE;
+	return getConectCheckBase();
 }
 
 bool CAlignManager::SocketServerOpen(CString strServerPort)
 {
+	SocketServerOpenBase(strServerPort);
 	m_bMelsecSimulaion = true;
 	SetSmartAddressing(false);
 	SetServerState(true);
@@ -498,14 +493,13 @@ void CAlignManager::OnEvent(UINT uEvent, LPVOID lpvData)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
+	// 先交给基类处理公共的断线重连逻辑
+	if (OnEventReconnectBase(uEvent))
+		return;
+
+	// 以下为 Align 业务相关事件的处理
 	switch (uEvent)
 	{
-	case EVT_CONDROP:
-		LogWrite(m_iAlignNum, _T("Align PC Connect Drop"));
-		break;
- 	case EVT_CONSUCCESS:
-		LogWrite(m_iAlignNum, _T("Align PC Connect Success"));
-		break;
 	case EVT_ZEROLENGTH:
 		LogWrite(m_iAlignNum, _T("Align PC EVT_ZEROLENGTH"));
 		break;
@@ -516,4 +510,9 @@ void CAlignManager::OnEvent(UINT uEvent, LPVOID lpvData)
 		LogWrite(m_iAlignNum, _T("Unknown Socket event"));
 		break;
 	}
+}
+
+void CAlignManager::LogServerMsg(LPCTSTR szMsg)
+{
+	LogWrite(m_iAlignNum, szMsg);
 }
