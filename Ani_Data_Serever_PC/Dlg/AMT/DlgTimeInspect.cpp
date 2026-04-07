@@ -1,4 +1,4 @@
-// DlgTimeInspect.cpp : ±¸Çö ÆÄÀÏÀÔ´Ï´Ù.
+// DlgTimeInspect.cpp : ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 //
 
 #include "stdafx.h"
@@ -9,7 +9,7 @@
 #include "afxdialogex.h"
 
 
-// CDlgTimeInspect ´ëÈ­ »óÀÚÀÔ´Ï´Ù.
+// CDlgTimeInspect ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 IMPLEMENT_DYNAMIC(CDlgTimeInspect, CDialog)
 
@@ -187,7 +187,7 @@ BEGIN_MESSAGE_MAP(CDlgTimeInspect, CDialog)
 END_MESSAGE_MAP()
 
 
-// CDlgTimeInspect ¸Þ½ÃÁö Ã³¸®±âÀÔ´Ï´Ù.
+// CDlgTimeInspect ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 BOOL CDlgTimeInspect::OnInitDialog()
 {
@@ -197,10 +197,10 @@ BOOL CDlgTimeInspect::OnInitDialog()
 	CBtnEnh *pBtnEnh = (CBtnEnh*)GetDlgItem(IDB_BTN_DY);
 	pBtnEnh->SetValue(TRUE);
 
-	// TODO:  ¿©±â¿¡ Ãß°¡ ÃÊ±âÈ­ ÀÛ¾÷À» Ãß°¡ÇÕ´Ï´Ù.
+	// TODO:  ï¿½ï¿½ï¿½â¿¡ ï¿½ß°ï¿½ ï¿½Ê±ï¿½È­ ï¿½Û¾ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	SetTimer(TMR_MAIN_INSPECT_INFO, 1000, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
-	// ¿¹¿Ü: OCX ¼Ó¼º ÆäÀÌÁö´Â FALSE¸¦ ¹ÝÈ¯ÇØ¾ß ÇÕ´Ï´Ù.
+	// ï¿½ï¿½ï¿½ï¿½: OCX ï¿½Ó¼ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ FALSEï¿½ï¿½ ï¿½ï¿½È¯ï¿½Ø¾ï¿½ ï¿½Õ´Ï´ï¿½.
 }
 
 BOOL CDlgTimeInspect::PreTranslateMessage(MSG* pMsg)
@@ -218,7 +218,7 @@ void CDlgTimeInspect::OnTimer(UINT_PTR nIDEvent)
 	if (this->IsWindowVisible() == FALSE)
 		return;
 
-	// TODO: ¿©±â¿¡ ¸Þ½ÃÁö Ã³¸®±â ÄÚµå¸¦ Ãß°¡ ¹×/¶Ç´Â ±âº»°ªÀ» È£ÃâÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ ï¿½ï¿½/ï¿½Ç´ï¿½ ï¿½âº»ï¿½ï¿½ï¿½ï¿½ È£ï¿½ï¿½ï¿½Õ´Ï´ï¿½.
 	if (nIDEvent == TMR_MAIN_INSPECT_INFO)
 	{
 		UpdateDisplay(m_iSelectShift);
@@ -229,6 +229,8 @@ void CDlgTimeInspect::OnTimer(UINT_PTR nIDEvent)
 
 void CDlgTimeInspect::UpdateDisplay(int nShift)
 {
+	theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === START === nShift[%d]"), nShift);
+
 	SumProduction.Reset(nShift);
 
 	theApp.AOIInspctionTimeDataSum(theApp.m_UiShift_TimeProduction, nShift, SumProduction);
@@ -255,6 +257,8 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 		m_btnTrayOutTotal.SetWindowText(sTemp);
 		sTemp.Format(_T("0"));
 		m_btnAlignTotal.SetWindowText(sTemp);
+
+		theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[0] - No data to display"));
 	}
 	else
 	{
@@ -286,6 +290,18 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 
 		sTemp.Format(_T("%d"), SumProduction.m_AlignResult[nShift]);
 		m_btnAlignTotal.SetWindowText(sTemp);
+
+		theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
+			SumProduction.m_InspectionTotal[nShift],
+			SumProduction.m_GoodResult[nShift],
+			SumProduction.m_BadResult[nShift],
+			SumProduction.m_ContactResult[nShift],
+			SumProduction.m_VisionResult[nShift],
+			SumProduction.m_ViewingResult[nShift],
+			SumProduction.m_PreGammaResult[nShift],
+			SumProduction.m_TpResult[nShift],
+			SumProduction.m_TrayDataOut[nShift],
+			SumProduction.m_AlignResult[nShift]);
 	}
 
 	for (int ii = 0; ii < InspectTimeTotalCount; ii++)
@@ -312,6 +328,8 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 
 			sTemp.Format(_T("0"));
 			m_btnAlign[ii].SetWindowText(sTemp);
+
+			theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[0] - No data"), ii);
 		}
 		else
 		{
@@ -343,8 +361,23 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 
 			sTemp.Format(_T("%d"), theApp.m_UiShift_TimeProduction[ii].m_AlignResult[nShift]);
 			m_btnAlign[ii].SetWindowText(sTemp);
+
+			theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
+				ii,
+				theApp.m_UiShift_TimeProduction[ii].m_InspectionTotal[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_GoodResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_BadResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_ContactResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_VisionResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_ViewingResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_PreGammaResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_TpResult[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_TrayDataOut[nShift],
+				theApp.m_UiShift_TimeProduction[ii].m_AlignResult[nShift]);
 		}
 	}
+
+	theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === END === nShift[%d]"), nShift);
 }
 
 
@@ -356,24 +389,24 @@ END_EVENTSINK_MAP()
 
 void CDlgTimeInspect::ClickBtnDy()
 {
-	// TODO: ¿©±â¿¡ ¸Þ½ÃÁö Ã³¸®±â ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	m_iSelectShift = Shift_DY;
 	UpdateDisplay(m_iSelectShift);
 }
 
 void CDlgTimeInspect::ClickBtnNt()
 {
-	// TODO: ¿©±â¿¡ ¸Þ½ÃÁö Ã³¸®±â ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	m_iSelectShift = Shift_NT;
 	UpdateDisplay(m_iSelectShift);
 }
 
 void CDlgTimeInspect::ClickDyDataReset()
 {
-	// TODO: ¿©±â¿¡ ¸Þ½ÃÁö Ã³¸®±â ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	if (theApp.m_iUserClass != USER_MAKER)
 	{
-		theApp.getMsgBox(MS_OK, _T("°ü¸®ÀÚ¸¸ ÀÌ¿ë °¡´ÉÇÕ´Ï´Ù."), _T("Maker is USE"), _T("Maker is USE"));
+		theApp.getMsgBox(MS_OK, _T("ï¿½ï¿½ï¿½ï¿½ï¿½Ú¸ï¿½ ï¿½Ì¿ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½."), _T("Maker is USE"), _T("Maker is USE"));
 		return;
 	}
 	else

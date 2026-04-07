@@ -113,9 +113,9 @@ void CPlcThread::ThreadRun()
 	// Track PLC connection transitions so operators can confirm link status from log.
 	int prevPlcConnected = -1; // -1 = unknown (first loop), 0 = disconnected, 1 = connected
 	
-
 	while (::WaitForSingleObject(m_hQuit, 50) != WAIT_OBJECT_0)
 	{
+
 		CFTPClient();
 		theApp.m_PlcConectStatus = theApp.m_pEqIf->m_pMNetH->IsConnected();
 
@@ -132,6 +132,7 @@ void CPlcThread::ThreadRun()
 
 		if (theApp.m_PlcConectStatus)
 		{
+
 			ProgramStartStopLog();
 			
 			curTime = CTime::GetCurrentTime();
@@ -1027,40 +1028,33 @@ void CPlcThread::ThreadRun()
 			// ICW 6501端口连接状态检查
 			BOOL bICWConnected = theApp.m_ICWCommManager.IsConnected();
 
-			// VisionReady 状态变化检测（避免日志刷屏）
-			static BOOL s_bLastICWConnected = FALSE;
+			// VisionReady 日志节流：只在状态变化时记录，且两次相同状态日志间隔至少 10 秒
+			static BOOL s_bLastICWConnected = FALSE;   // 初始值未知，首次调用会记录一次（无害）
 			static int s_iLastAOIPassMode = -1;
-			static DWORD s_dwLastVisionReadyLogTime = 0;
-			const DWORD VISION_READY_LOG_INTERVAL_MS = 60000; // 1分钟
+			static DWORD s_dwLastLogTick = 0;
+			DWORD dwNow = GetTickCount();
 
-			BOOL bNeedLog = FALSE;
-			if (bICWConnected != s_bLastICWConnected || theApp.m_AOIPassMode != s_iLastAOIPassMode)
-			{
-				bNeedLog = TRUE;
-			}
-			else if (GetTickCount() - s_dwLastVisionReadyLogTime > VISION_READY_LOG_INTERVAL_MS)
-			{
-				bNeedLog = TRUE;
-			}
+			BOOL bStateChanged = (bICWConnected != s_bLastICWConnected || theApp.m_AOIPassMode != s_iLastAOIPassMode);
+			BOOL bTimePassed = (dwNow - s_dwLastLogTick > 10000);  // 距离上次同类日志 >10s
 
-			if (bNeedLog)
+			if (bStateChanged || bTimePassed)
 			{
 				LogWrite(CStringSupport::FormatString(_T("[VisionReady] AOIPassMode=%d, ICWConnected=%d"),
 					theApp.m_AOIPassMode, bICWConnected));
 				s_bLastICWConnected = bICWConnected;
 				s_iLastAOIPassMode = theApp.m_AOIPassMode;
-				s_dwLastVisionReadyLogTime = GetTickCount();
+				s_dwLastLogTick = dwNow;
 			}
 
 			if (bICWConnected)
 			{
-				if (bNeedLog)
+				if (bStateChanged)
 					LogWrite(_T("[VisionReady] ICW Connected - Set VisionReady=TRUE"));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, OffSet_0, TRUE);
 			}
 			else
 			{
-				if (bNeedLog)
+				if (bStateChanged)
 					LogWrite(_T("[VisionReady] ICW Disconnected - Reset VisionReady and all Vision signals to FALSE"));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionReady, 0, FALSE);
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1, OffSet_0, FALSE);
@@ -3801,6 +3795,9 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 
 	BOOL bNgFlag = FALSE;
 
+	CString strCommand = (iCommand == Data_TrayOut) ? _T("TrayOut") : _T("LowerMachineOut");
+	theApp.m_pTestLog->LOG_INFO(_T("[AOIInspectDataParser] === START === PanelNum[%d] Command[%s]"), iPanelNum, strCommand);
+
 	if (iCommand == Data_TrayOut)
 		theApp.m_pEqIf->m_pMNetH->GetDataStatus(eWordType_TrayReportValue1 + iPanelNum, &pDataStatus);
 	else
@@ -3811,6 +3808,15 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 
 	iCurrentNum = pDataStatus.m_IndexNumStatus - 1;
 	strStageNum.Format(_T("%d"), iCurrentNum + 1);
+
+	theApp.m_pTestLog->LOG_INFO(_T("[AOIInspectDataParser] RawData: PanelID[%s] FpcID[%s] Index[%d] CurrentNum[%d]")
+		_T(" Contact[%d] FirstContact[%d] Tp[%d] Otp[%d] Vision[%d] Viewing[%d] OkGrade[%d] TryInsert[%d]"),
+		strCell_ID, strFpc_ID, pDataStatus.m_IndexNumStatus, iCurrentNum + 1,
+		pDataStatus.m_ContactStatus, pDataStatus.m_FirstContactStatus, pDataStatus.m_TpStatus,
+		pDataStatus.m_OtpStatus, pDataStatus.m_VisionStatus, pDataStatus.m_ViewingStatus,
+		pDataStatus.m_OkGrade, pDataStatus.m_TryInsertStatus);
+
+	theApp.m_pTestLog->LOG_INFO(_T("[AOIInspectDataParser] m_codeOk=[%d] m_codeFail=[%d]"), m_codeOk, m_codeFail);
 
 	theApp.m_shiftProduction[iCurrentNum].m_InspectionTotal[theApp.m_lastShiftIndex]++;
 	theApp.m_UiShiftProduction[iCurrentNum].m_InspectionTotal[theApp.m_lastShiftIndex]++;
@@ -3830,6 +3836,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataContactStatus = _T("NG");
 		bNgFlag = TRUE;
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Contact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus);
 	}
 	else if (pDataStatus.m_ContactStatus == m_codeOk)
 	{
@@ -3838,6 +3845,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataContactStatus = _T("GOOD");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Contact GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus);
+	}
+	else
+	{
+		theApp.m_pTestLog->LOG_WARN(_T("[AOI] Contact UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
+			strCell_ID, pDataStatus.m_ContactStatus, m_codeOk, m_codeFail);
 	}
 
 	if (pDataStatus.m_FirstContactStatus == m_codeFail)
@@ -3852,6 +3865,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_FirstContactNG[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_FirstContactNG[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataFirstContactStatus = _T("NG");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] FirstContact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_FirstContactStatus);
 	}
 
 	if (pDataStatus.m_TpStatus == m_codeFail)
@@ -3867,6 +3881,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_TpNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataTpStatus = _T("NG");
 		bNgFlag = TRUE;
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] TP NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus);
 	}
 	else if (pDataStatus.m_TpStatus == m_codeOk)
 	{
@@ -3875,6 +3890,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_TpGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_TpGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataTpStatus = _T("GOOD");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] TP GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus);
+	}
+	else
+	{
+		theApp.m_pTestLog->LOG_WARN(_T("[AOI] TP UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
+			strCell_ID, pDataStatus.m_TpStatus, m_codeOk, m_codeFail);
 	}
 
 	if (pDataStatus.m_OtpStatus == m_codeFail)
@@ -3890,6 +3911,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataOtpStatus = _T("NG");
 		bNgFlag = TRUE;
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] OTP/Gamma NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus);
 	}
 	else if (pDataStatus.m_OtpStatus == m_codeOk)
 	{
@@ -3898,6 +3920,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataOtpStatus = _T("GOOD");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] OTP/Gamma GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus);
+	}
+	else
+	{
+		theApp.m_pTestLog->LOG_WARN(_T("[AOI] OTP/Gamma UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
+			strCell_ID, pDataStatus.m_OtpStatus, m_codeOk, m_codeFail);
 	}
 
 	if (pDataStatus.m_VisionStatus == m_codeFail)
@@ -3908,10 +3936,17 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_VisionResult[theApp.m_lastShiftIndex]++;
 		dataItem.DataVisionStatus = _T("NG");
 		bNgFlag = TRUE;
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Vision NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus);
 	}
 	else if (pDataStatus.m_VisionStatus == m_codeOk)
 	{
 		dataItem.DataVisionStatus = _T("GOOD");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Vision GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus);
+	}
+	else
+	{
+		theApp.m_pTestLog->LOG_WARN(_T("[AOI] Vision UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
+			strCell_ID, pDataStatus.m_VisionStatus, m_codeOk, m_codeFail);
 	}
 
 	if (pDataStatus.m_ViewingStatus == m_codeFail)
@@ -3922,10 +3957,17 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ViewingResult[theApp.m_lastShiftIndex]++;
 		dataItem.DataViewingStatus = _T("NG");
 		bNgFlag = TRUE;
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Viewing NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus);
 	}
 	else if (pDataStatus.m_ViewingStatus == m_codeOk)
 	{
 		dataItem.DataViewingStatus = _T("GOOD");
+		theApp.m_pTestLog->LOG_INFO(_T("[AOI] Viewing GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus);
+	}
+	else
+	{
+		theApp.m_pTestLog->LOG_WARN(_T("[AOI] Viewing UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
+			strCell_ID, pDataStatus.m_ViewingStatus, m_codeOk, m_codeFail);
 	}
 
 	if (pDataStatus.m_TryInsertStatus == m_TrayInsert)
@@ -3993,6 +4035,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodBGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodBGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("B");
+			theApp.m_pTestLog->LOG_INFO(_T("[AOI] Good Grade B: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
 		}
 		else if (pDataStatus.m_OkGrade == Panel_C_GRADE)
 		{
@@ -4001,6 +4044,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodCGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodCGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("C");
+			theApp.m_pTestLog->LOG_INFO(_T("[AOI] Good Grade C: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
 		}
 		else
 		{
@@ -4009,6 +4053,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodAGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodAGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("A");
+			theApp.m_pTestLog->LOG_INFO(_T("[AOI] Good Grade A (default): Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
 		}
 	}
 
@@ -4096,6 +4141,13 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 	theApp.PreGammaDataSave(theApp.m_lastShiftIndex);
 	theApp.AOIInspectionTimeDataSave(theApp.m_lastShiftIndex);
 
+	CString strFinalResult = bNgFlag ? _T("NG") : _T("GOOD");
+	theApp.m_pTestLog->LOG_INFO(_T("[AOIInspectDataParser] === END === Panel[%s] FinalResult[%s] bNgFlag[%d]")
+		_T(" TimeInspectNum[%d] ShiftIndex[%d]"),
+		strCell_ID, strFinalResult, bNgFlag,
+		theApp.m_iTimeInspectNum, theApp.m_lastShiftIndex);
+	theApp.m_pTestLog->LOG_INFO(_T("[AOIInspectDataParser] FinalCounts: InspectTotal[+1] Good[%d] Bad[%d]"), 
+		bNgFlag ? 0 : 1, bNgFlag ? 1 : 0);
 
 	if (iCommand == Data_TrayOut)
 		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayReportEnd1 + iPanelNum, OffSet_0, TRUE);
