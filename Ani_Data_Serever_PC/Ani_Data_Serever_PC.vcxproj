@@ -375,6 +375,7 @@ copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libssl-3-x64.dll
     <ClInclude Include="Communication\ICWCommManager.h" />
     <ClInclude Include="Communication\ICWProtocol.h" />
     <ClInclude Include="Communication\SocketComm.h" />
+    <ClInclude Include="Communication\SocketServerBase.h" />
     <ClInclude Include="Communication\TpManager.h" />
     <ClInclude Include="Comm\DataInfo.h" />
     <ClInclude Include="Comm\DefectInfo.h" />
@@ -481,6 +482,7 @@ copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libssl-3-x64.dll
     <ClCompile Include="Communication\ICWCommManager.cpp" />
     <ClCompile Include="Communication\ICWProtocol.cpp" />
     <ClCompile Include="Communication\SocketComm.cpp" />
+    <ClCompile Include="Communication\SocketServerBase.cpp" />
     <ClCompile Include="Communication\TpManager.cpp" />
     <ClCompile Include="Comm\DataInfo.cpp" />
     <ClCompile Include="Comm\ImageViewNG.cpp" />
