@@ -27,6 +27,7 @@
 #include <vector>
 #include <map>
 #include "Ani_Data_Serever_PC.h"
+#include "DataModels.h"
 
 using namespace std;
 
@@ -465,6 +466,8 @@ class CDFSInfo{
 public:
 #if _SYSTEM_AMTAFT_
 	BOOL AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, CString strFpcID, CString strVisionPath, CString strViewingPath, CString strLumitopPath, CString strOpvPath, CString strSumPath);
+
+	BOOL WriteAOICSVFile(const CInspectionResult& inspResult, const CDefectInfoList& defectList, int nFixtureNo, LPCTSTR strFpcID = NULL);
 
 	BOOL DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL bTotalDfs);
 	BOOL DFSDefectBeginLoad_OP(CString strFileName, CString strTypeName, BOOL bTotalDfs);

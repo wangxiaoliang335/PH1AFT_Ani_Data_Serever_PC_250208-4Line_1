@@ -140,10 +140,10 @@ public:
     int OriShortSize;           // 原始图短轴长度(像素)
     
     // 灰度特征
-    double GrayScale;           // 缺陷灰度
-    double GrayScale_BK;        // 背景灰度
-    double GrayScaleDiff;       // 灰度差
-    double GrayscaleMean;       // 平均灰度
+    int GrayScale;              // 缺陷灰度
+    int GrayScale_BK;           // 背景灰度
+    int GrayScaleDiff;           // 灰度差
+    int GrayscaleMean;          // 平均灰度
     double GrayscaleMin;        // 最小灰度
     double GrayscaleMax;        // 最大灰度
     
@@ -215,12 +215,12 @@ public:
         , OriArea(0)
         , OriLongSize(0)
         , OriShortSize(0)
-        , GrayScale(0.0)
-        , GrayScale_BK(0.0)
+        , GrayScale(0)
+        , GrayScale_BK(0)
         , GrayScaleDiff(0.0)
-        , GrayscaleMean(0.0)
-        , GrayscaleMin(0.0)
-        , GrayscaleMax(0.0)
+        , GrayscaleMean(0)
+        , GrayscaleMin(0)
+        , GrayscaleMax(0)
         , Area(0)
         , Roundness(0.0)
         , MajorAxisAngle(0.0)

@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////////
 // FILE : DBInterface.cpp
 // Database operations interface implementation
 // Uses ODBC (MySQL ODBC 5.3 Driver) to connect to MySQL database
@@ -9,6 +9,7 @@
 #include "DBInterface.h"
 #include "DataModels.h"
 #include "Migration.h"
+#include "Ani_Data_Serever_PC.h"
 #include <objbase.h>
 
 #ifdef _DEBUG
@@ -930,72 +931,133 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
 {
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM %s WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
+        _T("SELECT ")
+        // 基本信息
+        _T("GUID_IVS_LCD_InspectionResult, DefectIndex, Type, ")
+        _T("PatternID, PatternName, InspType, ")
+        // 位置
+        _T("Pos_x, Pos_y, Pos_width, Pos_height, ")
+        // 物理尺寸
+        _T("TrueSize, TrueDiameter, TrueLongSize, TrueShortSize, ")
+        // 原始图特征
+        _T("OriArea, OriLongSize, OriShortSize, ")
+        // 灰度特征
+        _T("Grayscale, Grayscale_BK, GrayscaleDiff, GrayscaleMean, GrayscaleMin, GrayscaleMax, ")
+        // 几何特征
+        _T("Area, Roundness, MajorAxisAngle, JND, ")
+        // 层级
+        _T("Layer, ")
+        // AOI分类
+        _T("Code_AOI, Grade_AOI, Level_AOI, DefClass_AOI, DefName_AOI, ")
+        // 算法/特征
+        _T("AlgName, AlgID, ReasonCode, ")
+        _T("FeatureName, FeatureMin, FeatureMax, FeatureUnit, FeatureValue, ")
+        // 图像和XML
+        _T("ImagePath, XMLInfo, ")
+        // 复判字段
+        _T("ReviewResult_Worker, ReviewResult_Machine, MachineReviewDefectName, ")
+        _T("DefColor, DefColorValue, DefClass_AutoReview, DefName_AutoReview, ")
+        _T("AreaStat, Energy ")
+        _T("FROM %s WHERE GUID_IVS_LCD_InspectionResult = '%s' ORDER BY DefectIndex"),
         strTableName,
         EscapeString(strParentGUID));
 
+    TRACE(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s\n"), (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
+    TRACE(_T("  SQL: %s\n"), (LPCTSTR)strSQL);
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s"),
+        (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
+    theApp.m_pTestLog->LOG_INFO(_T("  SQL: %s"), (LPCTSTR)strSQL);
+
     SQLHSTMT hStmt;
     if (!ExecuteQuery(strSQL, hStmt))
+    {
+        TRACE(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery 失败, Error=%s\n"), (LPCTSTR)m_strLastError);
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery 失败, Error=%s"), (LPCTSTR)m_strLastError);
         return FALSE;
+    }
+
+    TRACE(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据...\n"));
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据..."));
 
     SQLRETURN ret;
+    int nFetchCount = 0;
     while ((ret = SQLFetch(hStmt)) != SQL_NO_DATA)
     {
         if (ret == SQL_ERROR)
         {
             m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-            TRACE(_T("DBInterface: Fetch defects failed - %s\n"), m_strLastError);
+            TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch失败 - %s\n"), m_strLastError);
+            theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] Fetch失败 - %s"), m_strLastError);
             SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
             return FALSE;
         }
 
         CDefectInfo defect;
         defect.GUID_Parent = strParentGUID;
-        defect.DefectIndex = GetColumnInt(hStmt, 3);
-        defect.Type = GetColumnString(hStmt, 4);
-        defect.PatternID = GetColumnInt(hStmt, 5);
-        defect.PatternName = GetColumnString(hStmt, 6);
-        defect.InspType = GetColumnString(hStmt, 7);
-        defect.Pos_x = GetColumnInt(hStmt, 8);
-        defect.Pos_y = GetColumnInt(hStmt, 9);
-        defect.Pos_width = GetColumnInt(hStmt, 10);
-        defect.Pos_height = GetColumnInt(hStmt, 11);
-        defect.TrueSize = GetColumnDouble(hStmt, 12);
-        defect.TrueDiameter = GetColumnDouble(hStmt, 13);
-        defect.TrueLongSize = GetColumnDouble(hStmt, 14);
-        defect.TrueShortSize = GetColumnDouble(hStmt, 15);
-        defect.OriArea = GetColumnInt(hStmt, 16);
-        defect.OriLongSize = GetColumnDouble(hStmt, 17);
-        defect.OriShortSize = GetColumnDouble(hStmt, 18);
-        defect.GrayScale = GetColumnInt(hStmt, 19);
-        defect.GrayScale_BK = GetColumnInt(hStmt, 20);
-        defect.GrayScaleDiff = GetColumnDouble(hStmt, 21);
-        defect.GrayscaleMean = GetColumnDouble(hStmt, 22);
-        defect.GrayscaleMin = GetColumnInt(hStmt, 23);
-        defect.GrayscaleMax = GetColumnInt(hStmt, 24);
-        defect.Area = GetColumnInt(hStmt, 25);
-        defect.Roundness = GetColumnDouble(hStmt, 26);
-        defect.MajorAxisAngle = GetColumnDouble(hStmt, 27);
-        defect.JND = GetColumnDouble(hStmt, 28);
-        defect.Layer = GetColumnString(hStmt, 29);
-        defect.Code_AOI = GetColumnString(hStmt, 30);
-        defect.Grade_AOI = GetColumnString(hStmt, 31);
-        defect.Level_AOI = GetColumnString(hStmt, 32);
-        defect.DefClass_AOI = GetColumnString(hStmt, 33);
-        defect.DefName_AOI = GetColumnString(hStmt, 34);
-        defect.AlgName = GetColumnString(hStmt, 35);
-        defect.AlgID = GetColumnInt(hStmt, 36);
-        defect.ReasonCode = GetColumnString(hStmt, 37);
-        defect.FeatureName = GetColumnString(hStmt, 38);
-        defect.FeatureMin = GetColumnString(hStmt, 39);
-        defect.FeatureMax = GetColumnString(hStmt, 40);
-        defect.FeatureUnit = GetColumnString(hStmt, 41);
-        defect.FeatureValue = GetColumnString(hStmt, 42);
-        defect.ImagePath = GetColumnString(hStmt, 43);
-        defect.XMLInfo = GetColumnString(hStmt, 44);
+        defect.DefectIndex = GetColumnInt(hStmt, 2);
+        defect.Type = GetColumnString(hStmt, 3);
+        defect.PatternID = GetColumnInt(hStmt, 4);
+        defect.PatternName = GetColumnString(hStmt, 5);
+        defect.InspType = GetColumnString(hStmt, 6);
+        defect.Pos_x = GetColumnInt(hStmt, 7);
+        defect.Pos_y = GetColumnInt(hStmt, 8);
+        defect.Pos_width = GetColumnInt(hStmt, 9);
+        defect.Pos_height = GetColumnInt(hStmt, 10);
+        defect.TrueSize = GetColumnDouble(hStmt, 11);
+        defect.TrueDiameter = GetColumnDouble(hStmt, 12);
+        defect.TrueLongSize = GetColumnDouble(hStmt, 13);
+        defect.TrueShortSize = GetColumnDouble(hStmt, 14);
+        defect.OriArea = GetColumnInt(hStmt, 15);
+        defect.OriLongSize = GetColumnInt(hStmt, 16);
+        defect.OriShortSize = GetColumnInt(hStmt, 17);
+        defect.GrayScale = GetColumnInt(hStmt, 18);
+        defect.GrayScale_BK = GetColumnInt(hStmt, 19);
+        defect.GrayScaleDiff = GetColumnDouble(hStmt, 20);
+        defect.GrayscaleMean = GetColumnDouble(hStmt, 21);
+        defect.GrayscaleMin = GetColumnInt(hStmt, 22);
+        defect.GrayscaleMax = GetColumnInt(hStmt, 23);
+        defect.Area = GetColumnInt(hStmt, 24);
+        defect.Roundness = GetColumnDouble(hStmt, 25);
+        defect.MajorAxisAngle = GetColumnDouble(hStmt, 26);
+        defect.JND = GetColumnDouble(hStmt, 27);
+        defect.Layer = GetColumnString(hStmt, 28);
+        defect.Code_AOI = GetColumnString(hStmt, 29);
+        defect.Grade_AOI = GetColumnString(hStmt, 30);
+        defect.Level_AOI = GetColumnString(hStmt, 31);
+        defect.DefClass_AOI = GetColumnString(hStmt, 32);
+        defect.DefName_AOI = GetColumnString(hStmt, 33);
+        defect.AlgName = GetColumnString(hStmt, 34);
+        defect.AlgID = GetColumnInt(hStmt, 35);
+        defect.ReasonCode = GetColumnString(hStmt, 36);
+        defect.FeatureName = GetColumnString(hStmt, 37);
+        defect.FeatureMin = GetColumnString(hStmt, 38);
+        defect.FeatureMax = GetColumnString(hStmt, 39);
+        defect.FeatureUnit = GetColumnString(hStmt, 40);
+        defect.FeatureValue = GetColumnString(hStmt, 41);
+        defect.ImagePath = GetColumnString(hStmt, 42);
+        defect.XMLInfo = GetColumnString(hStmt, 43);
+        defect.ReviewResult_Worker = GetColumnString(hStmt, 44);
+        defect.ReviewResult_Machine = GetColumnString(hStmt, 45);
+        defect.MachineReviewDefectName = GetColumnString(hStmt, 46);
+        defect.DefColor = GetColumnString(hStmt, 47);
+        defect.DefColorValue = GetColumnDouble(hStmt, 48);
+        defect.DefClass_AutoReview = GetColumnString(hStmt, 49);
+        defect.DefName_AutoReview = GetColumnString(hStmt, 50);
+
+        nFetchCount++;
+        CString strFetchLog;
+        strFetchLog.Format(_T("  [Fetch #%d] DefectIndex=%d, Type=%s, Pos=(%d,%d,%d,%d), Code=%s, DefClass=%s, DefName=%s"),
+            nFetchCount, defect.DefectIndex, (LPCTSTR)defect.Type,
+            defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height,
+            (LPCTSTR)defect.Code_AOI, (LPCTSTR)defect.DefClass_AOI, (LPCTSTR)defect.DefName_AOI);
+        TRACE(_T("%s\n"), (LPCTSTR)strFetchLog);
+        theApp.m_pTestLog->LOG_INFO(strFetchLog);
 
         defects.push_back(defect);
     }
+
+    TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch完成, 共获取 %d 条缺陷记录\n"), nFetchCount);
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] Fetch完成, 共获取 %d 条缺陷记录"), nFetchCount);
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1159,13 +1221,35 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
     if (!m_bConnected)
     {
         m_strLastError = _T("Not connected to database");
+        TRACE(_T("[QueryDefectsByParentGUID] 失败: 未连接到数据库, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 失败: 未连接到数据库, ParentGUID=%s"), (LPCTSTR)strParentGUID);
         return FALSE;
     }
+
+	TRACE(_T("[QueryDefectsByParentGUID] 开始查询缺陷, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 开始查询缺陷, ParentGUID=%s"), (LPCTSTR)strParentGUID);
 
     if (!QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects))
     {
         defects.clear();
+        TRACE(_T("[QueryDefectsByParentGUID] 从 ivs_lcd_aoidefect 表查询失败, ParentGUID=%s, Error=%s\n"),
+            (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 从 ivs_lcd_aoidefect 表查询失败, ParentGUID=%s, Error=%s"),
+            (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
         return FALSE;
+    }
+
+    TRACE(_T("[QueryDefectsByParentGUID] 查询完成, ParentGUID=%s, 缺陷数量=%d\n"), (LPCTSTR)strParentGUID, (int)defects.size());
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 查询完成, ParentGUID=%s, 缺陷数量=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
+    for (int i = 0; i < (int)defects.size(); i++)
+    {
+        const CDefectInfo& def = defects[i];
+        CString strDefLog;
+        strDefLog.Format(_T("  [Defect %d] Type=%s, Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, Code=%s, DefClass=%s, DefName=%s"),
+            i, (LPCTSTR)def.Type, def.Pos_x, def.Pos_y, def.Pos_width, def.Pos_height,
+            (LPCTSTR)def.Code_AOI, (LPCTSTR)def.DefClass_AOI, (LPCTSTR)def.DefName_AOI);
+        TRACE(_T("%s\n"), (LPCTSTR)strDefLog);
+        theApp.m_pTestLog->LOG_INFO(strDefLog);
     }
 
     return TRUE;
@@ -1516,6 +1600,13 @@ BOOL CDBInterface::QueryDefectCodeByBarcode(const CString& strBarcode, CString& 
     {
         strCode = strCodeAoi;
         strGrade = strGradeAoi;
+    }
+
+    // 当所有 Code 都为空时，设置默认值
+    if (strCode.IsEmpty())
+    {
+        strCode = _T("XPOXSD");
+        strGrade = _T("Y5");
     }
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);

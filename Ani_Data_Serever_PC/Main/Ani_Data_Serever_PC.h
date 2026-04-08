@@ -335,6 +335,9 @@ public:
 	CString m_strICWServerIP;
 	CString m_strICWServerPort;
 
+	// AOI 缺陷图片根目录
+	CString m_strMainAOIImageRoot;
+
 	CString m_strDBHost;
 	CString m_strDBPort;
 	CString m_strDBName;

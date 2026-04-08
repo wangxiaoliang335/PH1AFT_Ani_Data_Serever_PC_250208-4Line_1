@@ -42,10 +42,8 @@
 //        • 再看 `CDFSClient` 中对应的队列/上传线程逻辑（本文件中部），确认是否被正常消费。
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifdef _DEBUG
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#define new DEBUG_NEW
+#if _SYSTEM_AMTAFT_
+#define DEFAULT_MAIN_AOI_IMAGE_ROOT _T("D:\\MEMS_DFS_Data\\")
 #endif
 
 //////////////////////////////////////////////////////////////////////
@@ -741,11 +739,22 @@ void CDFSClient::RunDfsUploadThread()
 							{
 								for (const auto& defect : defectList)
 								{
-									if (!defect.ImagePath.IsEmpty())
+								if (!defect.ImagePath.IsEmpty())
+								{
+									// ImagePath 可能是相对路径或绝对路径
+									// 如果是相对路径，需要拼接根目录；如果是绝对路径直接使用
+									CString strSrcImagePath;
+									// 如果 ImagePath 已经是绝对路径（包含盘符如 D:\），直接使用
+									if (defect.ImagePath.GetLength() >= 3 && 
+										defect.ImagePath.Mid(1) == _T(":\\"))
 									{
-										// ImagePath 可能是相对路径或绝对路径
-										// 如果是相对路径，需要拼接根目录；如果是绝对路径直接使用
-										CString strSrcImagePath = defect.ImagePath;
+										strSrcImagePath = defect.ImagePath;
+									}
+									else
+									{
+										// 相对路径，拼接 MainAOI 根目录
+										strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
+									}
 										CString strFileName = strSrcImagePath;
 										int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
 										if (nLastSlash >= 0)
@@ -764,6 +773,53 @@ void CDFSClient::RunDfsUploadThread()
 									}
 								}
 							}
+
+							// ===== 复制 AOI 目录下的特殊图片（L*.bmp 和 MarkImg.jpg） =====
+							// 获取第一个缺陷的 ImagePath，提取 PanelID 目录路径
+							CString strAoiImageDir;
+							for (const auto& defect : defectList)
+							{
+								if (!defect.ImagePath.IsEmpty())
+								{
+									CString strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
+									int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
+									if (nLastSlash >= 0)
+									{
+										strAoiImageDir = strSrcImagePath.Left(nLastSlash);  // PanelID 目录
+									}
+									break;
+								}
+							}
+
+							if (!strAoiImageDir.IsEmpty())
+							{
+								// 复制 L*.bmp (等级标记图)
+								CFileFind fileFind;
+								CString strSearchPattern = strAoiImageDir + _T("\\L*.bmp");
+								BOOL bFind = fileFind.FindFile(strSearchPattern);
+								while (bFind)
+								{
+									bFind = fileFind.FindNextFile();
+									if (!fileFind.IsDots() && !fileFind.IsDirectory())
+									{
+										CString strSrcFile = fileFind.GetFilePath();
+										CString strDestFile = strAoiImagePath + _T("\\") + fileFind.GetFileName();
+										::CopyFile(strSrcFile, strDestFile, FALSE);
+										theApp.m_pFTPLog->LOG_DEBUG(_T("CopyGradeImage: %s -> AOI\\Image"), strSrcFile);
+									}
+								}
+								fileFind.Close();
+
+								// 复制 MarkImg.jpg (Mark 标记图)
+								CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+								CString strMarkDest = strAoiImagePath + _T("\\MarkImg.jpg");
+								if (FileExists(strMarkSrc))
+								{
+									::CopyFile(strMarkSrc, strMarkDest, FALSE);
+									theApp.m_pFTPLog->LOG_DEBUG(_T("CopyMarkImage: %s -> AOI\\Image"), strMarkSrc);
+								}
+							}
+							// ===== 复制特殊图片结束 =====
 						}
 						else
 						{

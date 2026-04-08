@@ -991,6 +991,37 @@ void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strF
 
 void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString strFpcID)
 {
+	// 【修改】优先从数据库查询缺陷码（与 SetLoadResultCode 保持一致）
+	if (GetDBInterface().IsConnected())
+	{
+		CString strDBCode, strDBGrade;
+		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strDBCode, strDBGrade))
+		{
+			if (!strDBCode.IsEmpty() && !strDBGrade.IsEmpty())
+			{
+				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
+				m_pTestLog->LOG_INFO(_T("LoadResultIndexCode DB OK: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+					strPanelID, strFpcID, strDBCode, strDBGrade);
+				return;
+			}
+			else
+			{
+				// 数据库中 Code/Grade 为空，使用默认值
+				strDBCode = _T("XPOXSD");
+				strDBGrade = _T("Y5");
+				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
+				m_pTestLog->LOG_WARN(_T("LoadResultIndexCode DB Empty, Use Default: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+					strPanelID, strFpcID, strDBCode, strDBGrade);
+				return;
+			}
+		}
+		else
+		{
+			m_pTestLog->LOG_WARN(_T("LoadResultIndexCode DB Query Failed: FpcID=%s, %s"),
+				strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
+		}
+	}
+
 	CString strFilePath, strShift, strCode, strGrade, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID);
@@ -1000,7 +1031,7 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 
 
 
-		strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay2((-1) * i / 2), strShift, strFpcID);
+		strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay((-1) * i / 2), strShift, strFpcID);
 		
 
 		if (i % 2)
@@ -1079,7 +1110,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	for (int i = 0; i < 14/*필요시 파라미터 최대 검색 Day*/; i++)
 	{
 
-		strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay2((-1) * i / 2), strShift, strFpcID);
+		strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay((-1) * i / 2), strShift, strFpcID);
 
 		if (i % 2)
 			strShift = _T("NT");
@@ -1159,7 +1190,7 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 		
 
 		if (iTypeNum == Machine_AOI)
-			strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay2((-1) * i / 2), strShift, strFpcID);
+			strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), GetDateString2ChangeDay((-1) * i / 2), strShift, strFpcID);
 		else
 			strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("ULD"), GetDateString2ChangeDay2((-1) * i / 2), strShift, strFpcID);
 
@@ -3962,6 +3993,13 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strICWServerIP = ini[_T("ICW")][_T("SERVER_IP")];
 	theApp.m_strICWServerPort = ini[_T("ICW")][_T("SERVER_PORT")];
 
+	// AOI 缺陷图片根目录
+	theApp.m_strMainAOIImageRoot = ini[_T("AOI")][_T("MainAOIImageRoot")];
+	if (theApp.m_strMainAOIImageRoot.IsEmpty())
+	{
+		theApp.m_strMainAOIImageRoot = _T("D:\\MEMS_DFS_Data\\");  // 默认值
+	}
+
 	// MySQL 数据库配置
 	theApp.m_strDBHost = ini[_T("DATABASE")][_T("HOST")];
 	theApp.m_strDBPort = ini[_T("DATABASE")][_T("PORT")];
@@ -3970,7 +4008,7 @@ void CAni_Data_Serever_PCApp::GetSystemData()
 	theApp.m_strDBPassword = ini[_T("DATABASE")][_T("PASSWORD")];
 
 	// 自动测试模式配置 (LIGHTING.AUTO_TEST)
-	theApp.m_iAutoTestMode = ini[_T("LIGHTING")][_T("AUTO_TEST")];
+	theApp.m_iAutoTestMode = ini[_T("ICW")][_T("AUTO_TEST")];
 #endif
 
 	//>>210422 

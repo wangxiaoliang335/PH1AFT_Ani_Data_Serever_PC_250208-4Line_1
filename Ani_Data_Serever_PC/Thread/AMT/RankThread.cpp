@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -66,79 +66,114 @@ void CRankThread::ThreadRun()
 						}
 						else
 						{
-							strPanelID = responseTokens[0];
-							strFpcID = responseTokens[1];
-							iPanelNum = _ttoi(responseTokens[2]);
-							iIndexNum = _ttoi(responseTokens[3]);
-							iInspNum = _ttoi(responseTokens[4]);
+						strPanelID = responseTokens[0];
+						strFpcID = responseTokens[1];
+						iPanelNum = _ttoi(responseTokens[2]);
+						iIndexNum = _ttoi(responseTokens[3]);
+						iInspNum = _ttoi(responseTokens[4]);
 
-							if (iInspNum == RankAOI)
+						if (iInspNum == RankAOI)
+						{
+							// 【修改】使用 strFpcID（真实 barcode）作为目录/文件名，与 WriteAOICSVFile 写入路径保持一致
+							CString strFinalPath;
+							BOOL bFileFound = FALSE;
+
+							for(int iTry = 0 ; iTry < 8 ; iTry++)
 							{
-								strPath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\AOI\\") + strPanelID + _T(".csv"); 
-								
-								for(int iTry = 0 ; iTry < 50 ; iTry++)
+								if (!bFileFound)
 								{
+									// 寻找文件（搜索7天内），只做一次
 									for (int i = 0 ; i < 7 ; i++)
 									{
-										strPath = DFS_SHARE_PATH + GetDateString2ChangeDay((-1) * i) + _T("\\") + strPanelID + _T("\\AOI\\") + strPanelID + _T(".csv");
+										strPath = DFS_SHARE_PATH + GetDateString2ChangeDay((-1) * i) + _T("\\") + strFpcID + _T("\\AOI\\") + strFpcID + _T(".csv");
 										if (FileExists(strPath))
-											break;										
+										{
+											strFinalPath = strPath;
+											bFileFound = TRUE;
+											break;
+										}
 									}
-									if (!FileExists(strPath))
+
+									if (!bFileFound)
 									{
-										Delay(100, TRUE);										
-										theApp.m_pTestLog->LOG_DEBUG(_T("Rank File Path Error : %s,"), strPath);										
+										// 文件还没出现，等100ms再试
+										Delay(100, TRUE);
+										theApp.m_pTestLog->LOG_DEBUG(_T("Rank File Path Error : %s,"), strPath);
+										continue;
 									}
-									else
+								}
+
+								// 文件已找到，读取 DEFECT_DATA
+								strInspName = _T("AOI");
+								DfsInfo.m_mapPanelDefect.clear();
+								DfsInfo.m_mapDefectCodeList.clear();
+								DfsInfo.DFSDefectBeginLoad(strFinalPath, strInspName, FALSE);
+
+								// 检查是否读到有效缺陷数据
+								BOOL bHasDefect = FALSE;
+								for (auto& kv : DfsInfo.m_mapDefectCodeList)
+								{
+									if (!kv.first.IsEmpty())
 									{
+										bHasDefect = TRUE;
 										break;
 									}
 								}
-								strInspName = _T("AOI");
-								theApp.m_pTestLog->LOG_DEBUG(_T("Rank DFSDefectBeginLoad start"), strPath);
-								DfsInfo.DFSDefectBeginLoad(strPath, strInspName, FALSE);
-								theApp.m_pTestLog->LOG_DEBUG(_T("Rank DFSDefectBeginLoad end"), strPath);
-							}
-							else if (iInspNum == RankLumitop)
-							{
-								strPath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\Lumitop\\") + strPanelID + _T(".csv");
-								strInspName = _T("Lumitop");
-								DfsInfo.DFSDefectBeginLoad(strPath, strInspName, FALSE);
-							}
-							else if (iInspNum == RankViewing)
-							{
-								strPath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\Viewing\\") + strPanelID + _T(".csv");
-								strInspName = _T("Viewing");
-								DfsInfo.DFSDefectBeginLoad(strPath, strInspName, FALSE);
-							}
-							else if (iInspNum == RankTP
-								   || iInspNum == RankContact)
-							{
-								CString strCodeTemp;
-								map<CString, map<CString, CString>>::iterator iter;
-								map<CString, CString> mapCode;
 
-								iInspNum == RankTP ? strInspName = _T("TP"), strCodeTemp = _T("XIMXDE") 
-									: strInspName = _T("CONTACT"), strCodeTemp = theApp.m_strContactNgCode;
-								
-								DfsInfo.m_mapPanelDefect.clear();
-								DfsInfo.m_mapDefectCodeList.clear();
-								/*iter = DfsInfo.m_mapPanelDefect.find(strInspName);
-								if (iter != DfsInfo.m_mapPanelDefect.end())
-									iter->second.insert(make_pair(strCodeTemp, _T("R1")));
+								if (bHasDefect)
+								{
+									// 读到有效数据，结束重试
+									break;
+								}
 								else
-								{*/
-									mapCode.insert(make_pair(strCodeTemp, _T("R1")));
-									DfsInfo.m_mapPanelDefect.insert(make_pair(strInspName, mapCode));
-									theApp.m_pTestLog->LOG_DEBUG(_T("DfsInfo.m_mapPanelDefect.insert  strPanelID :  strInspName : %s, mapCode : %s"), strPanelID, strInspName, mapCode);
-								//}
+								{
+									// CSV 中 DEFECT_CODE 仍为空（ICW 缺陷坐标尚未写入 DB）
+									// 等100ms后重新读取同一个 CSV 文件
+									Delay(100, TRUE);
+									theApp.m_pTestLog->LOG_DEBUG(_T("Rank DEFECT_DATA Empty, Re-read CSV : %s,"), strFinalPath);
+								}
 							}
-
-							theApp.m_pTestLog->LOG_INFO(_T("RankSave InspName : %s,"), strInspName);
 						}
+						else if (iInspNum == RankLumitop)
+						{
+							strPath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\Lumitop\\") + strPanelID + _T(".csv");
+							strInspName = _T("Lumitop");
+							DfsInfo.DFSDefectBeginLoad(strPath, strInspName, FALSE);
+						}
+						else if (iInspNum == RankViewing)
+						{
+							strPath = DFS_VIEWING_ANGLE_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\Viewing\\") + strPanelID + _T(".csv");
+							strInspName = _T("Viewing");
+							DfsInfo.DFSDefectBeginLoad(strPath, strInspName, FALSE);
+						}
+						else if (iInspNum == RankTP
+							   || iInspNum == RankContact)
+						{
+							CString strCodeTemp;
+							map<CString, map<CString, CString>>::iterator iter;
+							map<CString, CString> mapCode;
+
+							iInspNum == RankTP ? strInspName = _T("TP"), strCodeTemp = _T("XIMXDE") 
+								: strInspName = _T("CONTACT"), strCodeTemp = theApp.m_strContactNgCode;
+							
+							DfsInfo.m_mapPanelDefect.clear();
+							DfsInfo.m_mapDefectCodeList.clear();
+							/*iter = DfsInfo.m_mapPanelDefect.find(strInspName);
+							if (iter != DfsInfo.m_mapPanelDefect.end())
+								iter->second.insert(make_pair(strCodeTemp, _T("R1")));
+							else
+							{*/
+								mapCode.insert(make_pair(strCodeTemp, _T("R1")));
+								DfsInfo.m_mapPanelDefect.insert(make_pair(strInspName, mapCode));
+								theApp.m_pTestLog->LOG_DEBUG(_T("DfsInfo.m_mapPanelDefect.insert  strPanelID :  strInspName : %s, mapCode : %s"), strPanelID, strInspName, mapCode);
+							//}
+						}
+
+						theApp.m_pTestLog->LOG_INFO(_T("RankSave InspName : %s,"), strInspName);
 					}
-					else
-						theApp.m_pTraceLog->LOG_INFO(_T("**************** Parsing Error ****************"));
+				}
+				else
+					theApp.m_pTraceLog->LOG_INFO(_T("**************** Parsing Error ****************"));
 				}
 
 				if (DfsInfo.m_mapPanelDefect.size() > 0)

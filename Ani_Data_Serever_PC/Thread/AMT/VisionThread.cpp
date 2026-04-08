@@ -1237,6 +1237,7 @@ void CVisionThread::OnICWSnapFN()
 ///////////////////////////////////////////////////////////////////////////////
 void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 {
+	theApp.m_bVisionDeleteFlag = FALSE;
 	LogWrite(CStringSupport::FormatString(_T("[ICW] OnICWFinishFN: %d slots"), (int)finishInfo.Results.size()), 0);
 	LogWrite(_T("[ICW FN$] ========== FN$ 处理开始 =========="), 0);
 	LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 收到 %d 个槽位结果"), (int)finishInfo.Results.size()), 0);
@@ -1320,6 +1321,53 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 				nFixtureNo, nResult, nPlcResult), 0);
 		}
 
+		// 写入 AOI csv 文件（格式兼容旧版 Vision PC，供 DFS 后续读取汇总）
+		// 策略：缺陷坐标(X/Y/Size) → 从数据库 QueryDefectsByParentGUID 查询
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step3 - 查询缺陷坐标 - inspResult.GUID=[%s]"),
+			nFixtureNo, (LPCTSTR)inspResult.GUID), nFixtureNo - 1);
+		CDefectInfoList defectList;
+		if (!inspResult.GUID.IsEmpty())
+		{
+			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: 调用 QueryDefectsByParentGUID(GUID=%s)"),
+				nFixtureNo, (LPCTSTR)inspResult.GUID), nFixtureNo - 1);
+			if (!GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
+			{
+				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: QueryDefectsByParentGUID 失败 - %s"),
+					nFixtureNo, (LPCTSTR)GetDBInterface().GetLastError()), nFixtureNo - 1);
+			}
+			else
+			{
+				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: QueryDefectsByParentGUID 完成, 查询到 %d 个缺陷"),
+					nFixtureNo, (int)defectList.size()), nFixtureNo - 1);
+			}
+		}
+		else
+		{
+			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: inspResult.GUID 为空, 跳过缺陷查询"),
+				nFixtureNo), nFixtureNo - 1);
+		}
+		CDFSInfo dfsInfo;
+		if (dfsInfo.WriteAOICSVFile(inspResult, defectList, nFixtureNo, strBarcode))
+		{
+			theApp.m_pTestLog->LOG_INFO(_T("[ICW FN$] 治具 %d: WriteAOICSVFile 成功 (DefectCount=%d)"), nFixtureNo, (int)defectList.size());
+		}
+		else
+		{
+			theApp.m_pTestLog->LOG_INFO(_T("[ICW FN$] 治具 %d: WriteAOICSVFile 失败"), nFixtureNo);
+		}
+
+		// AOI NG 时加入 RankCode 列表（供等级码管理使用）
+		// 注意：第二个参数传 strBarcode（真实 FpcID），与 WriteAOICSVFile 写入路径保持一致
+		if (nPlcResult == m_codeFail)
+		{
+			theApp.m_pRankTread->AddRankCodeList(strUniqueID, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
+			theApp.m_pTestLog->LOG_INFO(_T("[ICW FN$] 治具 %d: AddRankCodeList %s NG (FpcID=%s)"), nFixtureNo, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode);
+		}
+		else
+		{
+			theApp.m_pTestLog->LOG_INFO(_T("[ICW FN$] 治具 %d: AddRankCodeList %s OK"), nFixtureNo, (LPCTSTR)strUniqueID);
+		}
+
 		// Step 4: 从 IVS_LCD_InspectionResult 读取缺陷码和等级（已在 Step2 查询得到）
 		// 无需再查 ivs_lcd_aoidefect，直接使用 inspResult 中的字段
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step4 - 从 InspectionResult 读取缺陷码"),
@@ -1382,10 +1430,10 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		// Step 6: 写入 VisionResult（PLC 主结果）
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 - 写入 VisionResult"), nFixtureNo), nFixtureNo - 1);
 		int nVisionResult = nPlcResult;
-		if (!strDefectCode.IsEmpty())
-		{
-			nVisionResult = m_codeFail;
-		}
+		//if (!strDefectCode.IsEmpty())
+		//{
+		//	nVisionResult = m_codeFail;
+		//}
 		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_VisionResult1 + (nFixtureNo - 1), &nVisionResult);
 		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC VisionResult%d = %d (DefectCode=%s, Grade=%s)"),
 			nFixtureNo, nVisionResult, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), 0);
@@ -1399,7 +1447,7 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 
 		// 写入缺陷码（如果有的话，存储到 PLC 对应区域）
 		// 参考 PlcThread 的 DefectCodeStart 逻辑：检测 Start bit 上升沿，写入数据后设置 End bit
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step5 - DefectCode 握手处理"), nFixtureNo), nFixtureNo - 1);
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step10 - DefectCode 握手处理"), nFixtureNo), nFixtureNo - 1);
 
 		// 读取 PLC DefectCodeStart bit（与 PlcThread 逻辑一致）
 		//BOOL bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_DefectCodeStart1 + (nFixtureNo - 1), OffSet_0);
@@ -1447,8 +1495,8 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 				nFixtureNo, (LPCTSTR)strDefectCode, (LPCTSTR)strGrade), 0);
 		}
 
-		// Step 6: DFS 数据上传（点灯/Lumitop 设备）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 - DFS 数据上传"), nFixtureNo), nFixtureNo - 1);
+		// Step 9: DFS 数据上传（点灯/Lumitop 设备）
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step9 - DFS 数据上传"), nFixtureNo), nFixtureNo - 1);
 		// 根据文档：触发时机为 FN$ 处理完成时同时触发 PLC 写入和 DFS 上传
 		if (!strBarcode.IsEmpty())
 		{
@@ -1479,6 +1527,19 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		else
 		{
 			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] 治具 %d: Step6 跳过 - Barcode 为空"), nFixtureNo), nFixtureNo - 1);
+		}
+
+		// 非 PassMode 且 NG 时通知 OPV 两个通道（供 OPV 界面显示 NG 状态）
+		if (!theApp.m_AOIPassMode)
+		{
+			if (nPlcResult == m_codeFail)
+			{
+				CString strMsg;
+				strMsg = CStringSupport::FormatString(_T("%d,%d"), MC_NG_PANEL, _AOI);
+				theApp.m_OpvSocketManager[0].SendOpvMessage(strMsg, 0, MC_NG_PANEL);
+				theApp.m_OpvSocketManager[1].SendOpvMessage(strMsg, 1, MC_NG_PANEL);
+				theApp.m_pTestLog->LOG_INFO(_T("[ICW FN$] 治具 %d: Send OPV NG Panel=%s"), nFixtureNo, (LPCTSTR)strUniqueID);
+			}
 		}
 
 		LogWrite(CStringSupport::FormatString(
@@ -1515,6 +1576,8 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		LogWrite(_T("[ICW FN$] AUTO_TEST mode - Keep ICW Start$ flags (no more sends in test mode)"), 0);
 	}
 #endif
+
+	theApp.m_bVisionDeleteFlag = TRUE;  // 允许 Slot 回收复用
 }
 
 #endif

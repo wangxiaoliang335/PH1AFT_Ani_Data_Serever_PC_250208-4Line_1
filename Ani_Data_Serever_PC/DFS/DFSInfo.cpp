@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "DFSInfo.h"
+#include "Ani_Data_Serever_PC.h"
 
 
 #ifdef _DEBUG
@@ -358,40 +359,71 @@ BOOL CDFSInfo::DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL
 		iNum = OPV;
 
 	int Rank_num = theApp.m_VecRank[iNum].size();
+
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] >>> ENTER: file=%s, type=%s, bTotalDfs=%d, Rank_num=%d"),
+		strFileName, strTypeName, bTotalDfs, Rank_num);
+
 	if (sFile.Open(strFileName, CFile::modeRead) == FALSE)
 	{
-		theApp.m_pTraceLog->LOG_DEBUG(_T("MapFile Path Error : %s,"), strFileName);
+		theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] File Open Failed: %s"), strFileName);
 		return FALSE;
 	}
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] File Open OK: %s"), strFileName);
 
 	while (sFile.ReadString(strInfo))
 	{
-		if (strInfo.Find(CStringSupport::FormatString(_T("%s_DATA_BEGIN"), strInspName)) != -1)
+		CString strSectionTag = CStringSupport::FormatString(_T("%s_DATA_BEGIN"), strInspName);
+		if (strInfo.Find(strSectionTag) != -1)
 		{
 			sFile.ReadString(strInfo);
 			if (strInfo.Find(_T("DEFECT_CODE")) != -1)
 			{
+				theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] Header Found: %s"), strInfo);
+
 				int iCnt(0);
 				while (sFile.ReadString(strInfo))
 				{
 					if (strInfo == CStringSupport::FormatString(_T("%s_DATA_END"), strInspName))
 					{
+						theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] DEFECT_DATA_END: %s, totalRows=%d, panelGrade=%s"),
+							strFileName, iCnt, m_PanelSummaryInfo.strPanelGrade);
 						if (iCnt == 0)
 							m_PanelSummaryInfo.strPanelGrade = _T("OK");
 						break;
 					}
 					CStringSupport::GetTokenArray(strInfo, _T(','), responseTokens);
-					
+
+					// 日志：字段数校验，防止列索引越界
+					int iTokenCount = responseTokens.GetSize();
 					if (strInspName == _T("OPV"))
 					{
+						if (iTokenCount < 5)
+						{
+							theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] WARN: OPV Row tokenCount=%d < 5, line=[%s], skip"),
+								iTokenCount, strInfo);
+							responseTokens.RemoveAll();
+							mapCode.clear();
+							continue;
+						}
 						strGrade = responseTokens[2];
 						strCode = responseTokens[4];
 					}
 					else
 					{
+						if (iTokenCount < 6)
+						{
+							theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] WARN: AOI Row tokenCount=%d < 6, line=[%s], skip"),
+								iTokenCount, strInfo);
+							responseTokens.RemoveAll();
+							mapCode.clear();
+							continue;
+						}
 						strGrade = responseTokens[5];
 						strCode = responseTokens[4];
 					}
+
+					theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] Row[%d] tokens=%d, Code=%s, Grade=%s"),
+						iCnt, iTokenCount, strCode, strGrade);
 
 					
 					
@@ -406,17 +438,14 @@ BOOL CDFSInfo::DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL
 
 							if (strInspName == _T("OPV"))
 							{
-								tempRankStruc.strPanelID = responseTokens[0];
-								tempRankStruc.strPattern = responseTokens[5];
+								if (iTokenCount > 0) tempRankStruc.strPanelID = responseTokens[0];
+								if (iTokenCount > 5) tempRankStruc.strPattern = responseTokens[5];
 							}
 							else
 							{
-								tempRankStruc.strPanelID = responseTokens[0];
-								tempRankStruc.strPattern = responseTokens[3];
+								if (iTokenCount > 0) tempRankStruc.strPanelID = responseTokens[0];
+								if (iTokenCount > 3) tempRankStruc.strPattern = responseTokens[3];
 							}
-
-
-							
 
 							m_vRankSum.push_back(tempRankStruc);
 						}
@@ -430,20 +459,24 @@ BOOL CDFSInfo::DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL
 									{
 										Rank_num = Rank.iPriority;
 										m_PanelSummaryInfo.strMainDefectCode = strCode;
-										m_PanelSummaryInfo.strPanelGrade = strGrade;//Rank.strGrade;
-										strPanelID = responseTokens[0];
-										strPattern = responseTokens[5];
+										m_PanelSummaryInfo.strPanelGrade = strGrade;
+										if (iTokenCount > 0) strPanelID = responseTokens[0];
+										if (strInspName == _T("OPV"))
+										{
+											if (iTokenCount > 5) strPattern = responseTokens[5];
+										}
+										else
+										{
+											if (iTokenCount > 3) strPattern = responseTokens[3];
+										}
 									}
-									
+
 									if (strGrade.CompareNoCase(_T("")))
-										m_PanelSummaryInfo.AOI_PAENL_GRADE = _T("NG"); //Data에서 찾아서 있으면, NG로.. 20210114
+										m_PanelSummaryInfo.AOI_PAENL_GRADE = _T("NG");
 									break;
 								}
 							}
 						}
-
-						int iCnt(0);
-						
 
 						for (int ii = 0; ii < DefectTitleMaxCount; ii++)
 						{
@@ -503,18 +536,24 @@ BOOL CDFSInfo::DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL
 					iCnt++;
 				}
 			}
-			else
-			{
-				theApp.m_pTestLog->LOG_DEBUG(_T("Defect_CODE Not finde %s"), strFileName);
-			}
+			// 找到 DATA_BEGIN 但不是 DEFECT_CODE 头行，跳过该段继续读
 		}
-		else
+		else if (strInfo.Find(_T("_DATA_BEGIN")) != -1)
 		{
-			theApp.m_pTestLog->LOG_DEBUG(_T("Defect_CODE Not finde2 %s"), strFileName);
+			// 跳过其他数据段（POINT_DATA_BEGIN, LINE_DATA_BEGIN, MURA_DATA_BEGIN 等）
 		}
 	}
 	
 	sFile.Close();
+
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad] <<< EXIT: file=%s, panelGrade=%s, mainCode=%s, dot=%s, line=%s, mura=%s, color=%s"),
+		strFileName,
+		m_PanelSummaryInfo.strPanelGrade,
+		m_PanelSummaryInfo.strMainDefectCode,
+		m_PanelSummaryInfo.strTotalPointCnt,
+		m_PanelSummaryInfo.strTotalLineCnt,
+		m_PanelSummaryInfo.strTotalMuraCnt,
+		m_PanelSummaryInfo.strColorShiftDefect);
 
 	if (m_PanelSummaryInfo.AOI_PAENL_GRADE == _T("NG"))
 	{
@@ -551,31 +590,56 @@ BOOL CDFSInfo::DFSDefectBeginLoad_OP(CString strFileName, CString strTypeName, B
 	CString strInspName = strTypeName == _T("AOI") ? _T("OPV") : _T("DEFECT");
 	int iNum = strTypeName == _T("AOI") ? INDEX : OPV;
 
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] >>> ENTER: file=%s, type=%s, bTotalDfs=%d"),
+		strFileName, strTypeName, bTotalDfs);
+
 	if (sFile.Open(strFileName, CFile::modeRead) == FALSE)
 	{
-		theApp.m_pTraceLog->LOG_DEBUG(_T("MapFile Path Error : %s,"), strFileName);
+		theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] File Open Failed: %s"), strFileName);
 		return FALSE;
 	}
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] File Open OK: %s"), strFileName);
 
 	while (sFile.ReadString(strInfo))
 	{
-		if (strInfo.Find(CStringSupport::FormatString(_T("%s_DATA_BEGIN"), strInspName)) != -1)
+		CString strSectionTag = CStringSupport::FormatString(_T("%s_DATA_BEGIN"), strInspName);
+		if (strInfo.Find(strSectionTag) != -1)
 		{
+			theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] Found Section: %s"), strSectionTag);
+
 			sFile.ReadString(strInfo);
 			if (strInfo.Find(_T("DEFECT_CODE")) != -1)
 			{
+				theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] Header Found: %s"), strInfo);
+
 				int iCnt(0);
 				while (sFile.ReadString(strInfo))
 				{
 					if (strInfo == CStringSupport::FormatString(_T("%s_DATA_END"), strInspName))
 					{
+						theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] DEFECT_DATA_END: %s, totalRows=%d"),
+							strFileName, iCnt);
 						if (iCnt == 0)
 							m_PanelSummaryInfo_OP.strPanelGrade = _T("OK");
 						break;
 					}
 					CStringSupport::GetTokenArray(strInfo, _T(','), responseTokens);
+
+					// 字段数校验，防越界
+					int iTokenCount = responseTokens.GetSize();
+					if (iTokenCount < 5)
+					{
+						theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] WARN: Row tokenCount=%d < 5, line=[%s], skip"),
+							iTokenCount, strInfo);
+						responseTokens.RemoveAll();
+						mapCode.clear();
+						continue;
+					}
 					strGrade = responseTokens[2];
 					strCode = responseTokens[4];
+
+					theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] Row[%d] tokens=%d, Code=%s, Grade=%s"),
+						iCnt, iTokenCount, strCode, strGrade);
 
 					if (bTotalDfs == TRUE)
 					{
@@ -646,6 +710,14 @@ BOOL CDFSInfo::DFSDefectBeginLoad_OP(CString strFileName, CString strTypeName, B
 	}
 
 	sFile.Close();
+
+	theApp.m_pTraceLog->LOG_DEBUG(_T("[DFSDefectBeginLoad_OP] <<< EXIT: file=%s, panelGrade=%s, dot=%s, line=%s, mura=%s, color=%s"),
+		strFileName,
+		m_PanelSummaryInfo_OP.strPanelGrade,
+		m_PanelSummaryInfo_OP.strTotalPointCnt,
+		m_PanelSummaryInfo_OP.strTotalLineCnt,
+		m_PanelSummaryInfo_OP.strTotalMuraCnt,
+		m_PanelSummaryInfo_OP.strColorShiftDefect);
 
 	return TRUE;
 }
@@ -1982,4 +2054,313 @@ void CDFSInfo::SetBCServerData(CString strPanel, int iType, CDFSInfo DfsInfo)
 	}
 	else if (iType == Machine_GAMMA)
 		m_PanelDataBegin.strProcess_ID = _T("1J00");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// WriteAOICSVFile - 由 DataServer 程序写入 AOI 检测结果 CSV 文件
+//   格式完全兼容旧版 Vision PC 生成的 DFS 文件，供 AMTAFTSavePanelDFS_SUM 读取
+//
+// 参数：
+//   inspResult - ICW FN$ 处理得到的检测结果（包含 AOIResult/Code/Grade 等）
+//   defectList - 缺陷列表（从数据库查询得到，包含 X/Y/Size/Type 等）
+//   nFixtureNo - 治具号（1~4）
+//
+// 写入路径：DFS_SHARE_PATH + 日期 + \\ + PanelID + \\AOI\\ + PanelID + .csv
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefectInfoList& defectList, int nFixtureNo, LPCTSTR strFpcID)
+{
+	CStdioFile sFile;
+	CString strPanelID = inspResult.UniqueID.IsEmpty() ? inspResult.ScreenID : inspResult.UniqueID;
+	CString strDate = GetDateString2();
+
+	TRACE(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ====\n"));
+	theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ===="));
+	theApp.m_pTestLog->LOG_INFO(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]"),
+		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	theApp.m_pTestLog->LOG_INFO(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]"),
+		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+	TRACE(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]\n"),
+		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	TRACE(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]\n"),
+		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+
+	// 优先使用传入的 FpcID 作为目录/文件名（与 RankThread 读取路径保持一致）
+	CString strCsvPanelID;
+	if (strFpcID != NULL && _tcslen(strFpcID) > 0)
+		strCsvPanelID = strFpcID;
+	else
+		strCsvPanelID = strPanelID;  // 兼容：未传入时退化为 UniqueID
+
+	// 构造 AOI csv 文件路径（与 RankThread/RankSave 保持一致）
+	CString strAOIPath = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\") + strCsvPanelID + _T(".csv");
+
+	TRACE(_T("  strCsvPanelID=[%s], strAOIPath=[%s]\n"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+	theApp.m_pTestLog->LOG_INFO(_T("  strCsvPanelID=[%s], strAOIPath=[%s]"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+
+	// 创建目录结构
+	CString strAoiDir = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\");
+	CreateFolders(strAoiDir);
+
+	// 打开文件（覆盖写入）
+	if (sFile.Open(strAOIPath, CFile::modeCreate | CFile::modeWrite) == FALSE)
+	{
+		theApp.m_pFTPLog->LOG_INFO(_T("[WriteAOICSVFile] Failed to create file: %s"), strAOIPath);
+		TRACE(_T("[WriteAOICSVFile] 文件打开失败: %s\n"), (LPCTSTR)strAOIPath);
+		theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] 文件打开失败: %s"), (LPCTSTR)strAOIPath);
+		return FALSE;
+	}
+
+	TRACE(_T("[WriteAOICSVFile] 文件打开成功: %s\n"), (LPCTSTR)strAOIPath);
+	theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] 文件打开成功: %s"), (LPCTSTR)strAOIPath);
+
+	// ================================================================
+	// 填充 m_DefectDataList（缺陷列表）
+	//   注意：DEFECT_TYPE 映射为 "Point"（与旧 Vision PC 一致）
+	// ================================================================
+	CString strAOIGrade = inspResult.AOIResult.CompareNoCase(_T("OK")) == 0 ? _T("OK") : inspResult.Grade_AOI;
+	m_DefectDataList.clear();
+
+	TRACE(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d\n"), (int)defectList.size());
+	theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d"), (int)defectList.size());
+	for (int i = 0; i < (int)defectList.size(); i++)
+	{
+		const CDefectInfo& defect = defectList[i];
+
+		TRACE(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f\n"),
+			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+		theApp.m_pTestLog->LOG_INFO(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
+			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+
+		SDFSDefectDataBegin item;
+		item.strPANEL_ID = strCsvPanelID;
+		item.strDEFECT_DATA_NUM = Int2String(i + 1);
+
+		// DEFECT_TYPE：旧 Vision PC 使用 "Point"，非 "Dot"
+		CString strType = defect.Type;
+		strType.MakeUpper();
+		if (strType.Find(_T("LINE")) >= 0)
+			item.strDEFECT_TYPE = _T("Line");
+		else if (strType.Find(_T("MURA")) >= 0)
+			item.strDEFECT_TYPE = _T("Mura");
+		else if (strType.Find(_T("DOT")) >= 0)
+			item.strDEFECT_TYPE = _T("Point");   // Point = 旧 Vision PC 用法
+		else
+			item.strDEFECT_TYPE = _T("Other");
+
+		item.strDEFECT_PTRN = defect.PatternName;
+		item.strDEFECT_CODE = defect.Code_AOI.IsEmpty() ? _T("XIMXDE") : defect.Code_AOI;
+		item.strDEFECT_GRADE = defect.Grade_AOI.IsEmpty() ? strAOIGrade : defect.Grade_AOI;
+
+		// 图像数据（ImagePath → 取文件名记入）
+		if (!defect.ImagePath.IsEmpty())
+		{
+			int nSlash = max(defect.ImagePath.ReverseFind('\\'), defect.ImagePath.ReverseFind('/'));
+			if (nSlash >= 0)
+				item.strIMAGE_DATA = defect.ImagePath.Mid(nSlash + 1);
+			else
+				item.strIMAGE_DATA = defect.ImagePath;
+		}
+		else
+		{
+			item.strIMAGE_DATA = _T("");
+		}
+
+		item.strX = defect.Pos_x > 0 ? Int2String(defect.Pos_x) : _T("");
+		item.strY = defect.Pos_y > 0 ? Int2String(defect.Pos_y) : _T("");
+		item.strSIZE = defect.TrueSize > 0 ? Int2String((int)defect.TrueSize) : _T("");
+
+		TRACE(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]\n"),
+			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+		theApp.m_pTestLog->LOG_INFO(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
+			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+
+		// CAM_INSPECT=2（与旧 Vision PC 一致）
+		item.strCAM_INSPECT = _T("2");
+
+		// Zone 为空（旧 Vision PC Zone 列留空）
+		item.strZone = _T("");
+
+		item.strInspName = _T("AOI");
+
+		m_DefectDataList.push_back(item);
+	}
+
+	TRACE(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d\n"), (int)m_DefectDataList.size());
+	theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d"), (int)m_DefectDataList.size());
+
+	// ================================================================
+	// 补充汇总缺陷记录
+	//   场景：AOI 检测到 NG（如 Line/Mura）但缺陷坐标异步写入 DB，
+	//   导致 QueryDefectsByParentGUID 返回空列表。
+	//   此时写入一条汇总记录，包含总等级码和总缺陷码，供 Rank 系统使用。
+	// ================================================================
+	if (m_DefectDataList.empty())
+	{
+		CString strAOIRes = inspResult.AOIResult;
+		strAOIRes.MakeUpper();
+		BOOL bIsNG = (strAOIRes != _T("OK")) && !strAOIRes.IsEmpty();
+
+		if (bIsNG && !inspResult.Code_AOI.IsEmpty())
+		{
+			// 写入一条汇总缺陷记录（坐标为空，表示无具体坐标数据）
+			SDFSDefectDataBegin summaryItem;
+			summaryItem.strPANEL_ID = strCsvPanelID;
+			summaryItem.strDEFECT_DATA_NUM = _T("1");
+			// DEFECT_TYPE：从 AOIResult 推导
+			if (strAOIRes.Find(_T("LINE")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Line");
+			else if (strAOIRes.Find(_T("MURA")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Mura");
+			else if (strAOIRes.Find(_T("DOT")) >= 0 || strAOIRes.Find(_T("POINT")) >= 0)
+				summaryItem.strDEFECT_TYPE = _T("Point");
+			else
+				summaryItem.strDEFECT_TYPE = _T("Point");  // 默认 Point
+			summaryItem.strDEFECT_PTRN = _T("");
+			summaryItem.strDEFECT_CODE = inspResult.Code_AOI;
+			summaryItem.strDEFECT_GRADE = inspResult.Grade_AOI.IsEmpty() ? strAOIGrade : inspResult.Grade_AOI;
+			summaryItem.strIMAGE_DATA = _T("");
+			summaryItem.strX = _T("0");
+			summaryItem.strY = _T("0");
+			summaryItem.strSIZE = _T("0");
+			summaryItem.strCAM_INSPECT = _T("2");
+			summaryItem.strZone = _T("");
+			summaryItem.strInspName = _T("AOI");
+			m_DefectDataList.push_back(summaryItem);
+		}
+	}
+
+	// ================================================================
+	// 6. 开始写入 CSV（完全兼容旧版 Vision PC AOI csv 格式）
+	//    真实格式（参考 D:\ANI\DataServer\AVX55CW02AA11\AOI\AVX55CW02AA11.csv）：
+	//      1. EQP_PANEL_DATA（15列，无 PLC_RECIPE_NAME）
+	//      2. DEFECT_DATA（12列，DEFECT_TYPE=Point，X/Y/SIZE 为浮点）
+	//      3. OPV_DATA（19列，与 DEFECT_DATA 一一对应）
+	// ================================================================
+
+	// --- EQP_PANEL_DATA（15列：去掉 PLC_RECIPE_NAME，与旧 Vision PC 一致）---
+	CString strAOIRecipe = theApp.m_CurrentModel.m_AlignPcCurrentModelName;
+	CString strStartTime = inspResult.StartTime.GetStatus() == COleDateTime::valid
+		? inspResult.StartTime.Format(_T("%Y%m%d%H%M%S")) : GetDateString6();
+	CString strEndTime = inspResult.StopTime.GetStatus() == COleDateTime::valid
+		? inspResult.StopTime.Format(_T("%Y%m%d%H%M%S")) : GetDateString6();
+
+	sFile.WriteString(_T("EQP_PANEL_DATA_BEGIN\n"));
+	sFile.WriteString(_T("RECIPE_NO,AOI_RECIPE_NAME,PG_RECIPE_NAME,TP_RECIPE_NAME,START_TIME,END_TIME,LOAD_STAGE_NO,INSP_STAGE_NO,UNLOAD_STAGE_NO,PROBE_CONTACT_CNT,INDEX_PANEL_GRADE,INDEX_MAIN_CODE,FINAL_PANEL_GRADE,FINAL_MAIN_CODE,OPERATOR_ID\n"));
+	CString strEQPLine;
+	strEQPLine.Format(_T(",%s,,,,,,%d,,,,%s,%s,%s,%s,\n"),
+		(LPCTSTR)strAOIRecipe,
+		nFixtureNo,
+		(LPCTSTR)strAOIGrade,
+		(LPCTSTR)inspResult.Code_AOI,
+		(LPCTSTR)strAOIGrade,
+		(LPCTSTR)inspResult.Code_AOI);
+	sFile.WriteString(strEQPLine);
+	sFile.WriteString(_T("EQP_PANEL_DATA_END\n"));
+
+	// --- DEFECT_DATA ---
+	sFile.WriteString(_T("\nDEFECT_DATA_BEGIN\n"));
+	sFile.WriteString(_T("PANEL_ID,DEFECT_DATA_NUM,DEFECT_TYPE,DEFECT_PTRN,DEFECT_CODE,DEFECT_GRADE,IMAGE_DATA,X,Y,SIZE,CAM_INSPECT,Zone\n"));
+
+	if (m_DefectDataList.empty())
+	{
+		sFile.WriteString(_T(",,,,,,,,,,,\n"));
+	}
+	else
+	{
+		for (size_t ii = 0; ii < m_DefectDataList.size(); ii++)
+		{
+			SDFSDefectDataBegin& item = m_DefectDataList[ii];
+
+			// X/Y/SIZE：旧 Vision PC 使用浮点格式（如 16732.000000）
+			// 从 CDefectInfo 的 Pos_x/Pos_y/TrueSize 转为浮点字符串
+			double fX = defectList[ii].Pos_x;
+			double fY = defectList[ii].Pos_y;
+			double fSize = defectList[ii].TrueSize > 0 ? defectList[ii].TrueSize
+				: max((double)defectList[ii].Pos_width, (double)defectList[ii].Pos_height);
+
+			CString strDefectLine;
+			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,\n"),
+				(LPCTSTR)item.strPANEL_ID,
+				ii + 1,
+				(LPCTSTR)item.strDEFECT_TYPE,
+				(LPCTSTR)item.strDEFECT_PTRN,
+				(LPCTSTR)item.strDEFECT_CODE,
+				(LPCTSTR)item.strDEFECT_GRADE,
+				(LPCTSTR)item.strIMAGE_DATA,
+				fX, fY, fSize);
+			sFile.WriteString(strDefectLine);
+		}
+	}
+	sFile.WriteString(_T("DEFECT_DATA_END\n"));
+
+	// --- OPV_DATA（与 DEFECT_DATA 一一对应，19列，字段含义同 OPV 设备）---
+	// 列：PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3（无末尾逗号）
+	sFile.WriteString(_T("\nOPV_DATA_BEGIN\n"));
+	sFile.WriteString(_T("PANEL_ID,FPC_ID,DEFECT_GRADE,TP_FUNCTION,DEFECT_CODE,DEFECT_PTN,DATA_X1,GATE_Y1,DATA_X2,GATE_Y2,DATA_X3,GATE_Y3,IMAGE,GLASS_COORDINATE_X1,GLASS_COORDINATE_Y1,GLASS_COORDINATE_X2,GLASS_COORDINATE_Y2,GLASS_COORDINATE_X3,GLASS_COORDINATE_Y3\n"));
+
+	if (m_DefectDataList.empty())
+	{
+		// 19列（无末尾逗号）
+		// 19列（无末尾逗号）：18个逗号
+		sFile.WriteString(_T(",,,,,,,,,,,,,,,,\n"));
+	}
+	else
+	{
+		for (size_t ii = 0; ii < m_DefectDataList.size(); ii++)
+		{
+			SDFSDefectDataBegin& item = m_DefectDataList[ii];
+
+			// 坐标：优先使用 defectList（真实缺陷坐标），否则使用 m_DefectDataList（汇总坐标 0）
+			double fX = 0.0, fY = 0.0;
+			CString strImgFile;
+			if (ii < (size_t)defectList.size())
+			{
+				fX = defectList[ii].Pos_x;
+				fY = defectList[ii].Pos_y;
+				if (!defectList[ii].ImagePath.IsEmpty())
+				{
+					int nLastSlash = max(defectList[ii].ImagePath.ReverseFind('\\'),
+						defectList[ii].ImagePath.ReverseFind('/'));
+					if (nLastSlash >= 0)
+						strImgFile = defectList[ii].ImagePath.Mid(nLastSlash + 1);
+					else
+						strImgFile = defectList[ii].ImagePath;
+				}
+			}
+			else
+			{
+				// 汇总缺陷记录：坐标为空，使用 strX/strY（均为 "0"）
+				if (!item.strX.IsEmpty()) fX = _ttof(item.strX);
+				if (!item.strY.IsEmpty()) fY = _ttof(item.strY);
+			}
+
+			// FPC_ID：从 inspResult.ScreenID 获取
+			CString strFpcID = inspResult.ScreenID;
+
+			// 19列，无末尾逗号（与 GetLastExtractionMsg 用 ';' 解析配合）
+			CString strOpvLine;
+			strOpvLine.Format(_T("%s,%s,%s,***,%s,%s,%.6f,%.6f,%.6f,%.6f,***,***,%s,***,***,***,***,***,***\n"),
+				(LPCTSTR)strPanelID,
+				(LPCTSTR)strFpcID,
+				(LPCTSTR)item.strDEFECT_GRADE,
+				(LPCTSTR)item.strDEFECT_CODE,
+				(LPCTSTR)item.strDEFECT_PTRN,
+				fX, fY, fX, fY,
+				(LPCTSTR)strImgFile);
+			sFile.WriteString(strOpvLine);
+		}
+	}
+	sFile.WriteString(_T("OPV_DATA_END\n"));
+
+	sFile.Close();
+
+	theApp.m_pFTPLog->LOG_INFO(_T("[WriteAOICSVFile] AOI CSV written: %s (DefectCount=%d)"),
+		strAOIPath, (int)defectList.size());
+	theApp.m_pTestLog->LOG_INFO(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ===="));
+	theApp.m_pTestLog->LOG_INFO(_T("  文件路径: %s, 缺陷数量: %d"), (LPCTSTR)strAOIPath, (int)defectList.size());
+	TRACE(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ====\n  文件路径: %s\n  缺陷数量: %d\n"), (LPCTSTR)strAOIPath, (int)defectList.size());
+
+	return TRUE;
 }
