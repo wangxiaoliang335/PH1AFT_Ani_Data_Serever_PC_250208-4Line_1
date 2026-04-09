@@ -1,5 +1,5 @@
 ﻿
-// Ani_Data_Serever_PCApp.cpp : ÀÀ¿ë ÇÁ·Î±×·¥¿¡ ´ëÇÑ Å¬·¡½º µ¿ÀÛÀ» Á¤ÀÇÇÕ´Ï´Ù.
+// Ani_Data_Serever_PCApp.cpp : 定义应用程序的类操作。
 //
 
 #include "stdafx.h"
@@ -12,6 +12,10 @@
 #include "Ani_Data_Serever_PCView.h"
 #include "MsgBox.h"
 #include <locale.h>
+#include <DbgHelp.h>
+#include <Shlwapi.h>
+#pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "Shlwapi.lib")
 
 #ifdef _DEBUGUNLOADER_MAIN_TOP_VIEW
 #define new DEBUG_NEW
@@ -53,10 +57,299 @@ CAni_Data_Serever_PCApp::CAni_Data_Serever_PCApp() :m_pEqIf(NULL), m_pComView(NU
 CAni_Data_Serever_PCApp theApp;
 
 
-// CAni_Data_Serever_PCApp ÃÊ±âÈ­
+// 全局崩溃捕获器相关变量和函数
+static TCHAR g_szLogDir[MAX_PATH] = { 0 };
+static TCHAR g_szDumpPath[MAX_PATH] = { 0 };
+
+// 获取崩溃日志目录
+CString GetCrashLogDir()
+{
+	if (g_szLogDir[0] == 0)
+	{
+		GetModuleFileName(NULL, g_szLogDir, MAX_PATH);
+		PathRemoveFileSpec(g_szLogDir);
+		PathAppend(g_szLogDir, _T("CrashLogs"));
+		CreateDirectory(g_szLogDir, NULL);
+	}
+	return CString(g_szLogDir);
+}
+
+// 获取Dump文件保存路径
+CString GetDumpFilePath()
+{
+	if (g_szDumpPath[0] == 0)
+	{
+		GetModuleFileName(NULL, g_szDumpPath, MAX_PATH);
+		PathRemoveFileSpec(g_szDumpPath);
+		PathAppend(g_szDumpPath, _T("CrashLogs"));
+		CreateDirectory(g_szDumpPath, NULL);
+
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		TCHAR szFileName[MAX_PATH];
+		wsprintf(szFileName, _T("\\Ani_Data_Server_PC_%04d%02d%02d_%02d%02d%02d.dmp"),
+			st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+		lstrcat(g_szDumpPath, szFileName);
+	}
+	return CString(g_szDumpPath);
+}
+
+// 写入崩溃日志
+void WriteCrashLog(LPCTSTR lpTitle, LPCTSTR lpFormat, ...)
+{
+	try
+	{
+		CString strLogDir = GetCrashLogDir();
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		CString strLogFile;
+		strLogFile.Format(_T("%s\\crash_%04d%02d%02d.log"), strLogDir.GetString(),
+			st.wYear, st.wMonth, st.wDay);
+
+		FILE* pFile = NULL;
+		_tfopen_s(&pFile, strLogFile, _T("a"));
+		if (pFile)
+		{
+			TCHAR szTime[64];
+			wsprintf(szTime, _T("[%04d-%02d-%02d %02d:%02d:%02d.%03d] "),
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+			fputws(szTime, pFile);
+			fputws(lpTitle, pFile);
+			fputws(_T("\n"), pFile);
+
+			va_list args;
+			va_start(args, lpFormat);
+			TCHAR szBuffer[4096];
+			_vstprintf_s(szBuffer, lpFormat, args);
+			va_end(args);
+
+			fputws(szBuffer, pFile);
+			fputws(_T("\n\n"), pFile);
+			fclose(pFile);
+		}
+	}
+	catch (...) {}
+}
+
+// 生成MiniDump
+BOOL WriteMiniDump(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	BOOL bResult = FALSE;
+	HANDLE hDumpFile = NULL;
+
+	try
+	{
+		CString strDumpPath = GetDumpFilePath();
+		hDumpFile = CreateFile(strDumpPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (hDumpFile != INVALID_HANDLE_VALUE)
+		{
+			MINIDUMP_EXCEPTION_INFORMATION ExInfo;
+			ExInfo.ThreadId = GetCurrentThreadId();
+			ExInfo.ExceptionPointers = pExceptionInfo;
+			ExInfo.ClientPointers = FALSE;
+
+			MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hDumpFile,
+				MiniDumpWithFullMemory, &ExInfo, NULL, NULL);
+			bResult = TRUE;
+		}
+	}
+	catch (...) {}
+	
+	if (hDumpFile)
+		CloseHandle(hDumpFile);
+
+	return bResult;
+}
+
+// 获取异常描述
+CString GetExceptionDescription(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	CString strDesc;
+	if (!pExceptionInfo)
+		return strDesc;
+
+	EXCEPTION_RECORD* pExceptionRecord = pExceptionInfo->ExceptionRecord;
+	if (pExceptionRecord)
+	{
+		DWORD dwExceptionCode = pExceptionRecord->ExceptionCode;
+		CString strCode;
+		strCode.Format(_T("异常代码: 0x%08X"), dwExceptionCode);
+		strDesc += strCode + _T("\n");
+
+		switch (dwExceptionCode)
+		{
+		case EXCEPTION_ACCESS_VIOLATION:
+			strDesc += _T("类型: 访问违规\n");
+			if (pExceptionRecord->NumberParameters >= 2)
+			{
+				CString strTemp;
+				strTemp.Format(_T("尝试%s地址: 0x%p\n"),
+					pExceptionRecord->ExceptionInformation[0] ? _T("写入") : _T("读取"),
+					(PVOID)pExceptionRecord->ExceptionInformation[1]);
+				strDesc += strTemp;
+			}
+			break;
+		case EXCEPTION_STACK_OVERFLOW:
+			strDesc += _T("类型: 栈溢出\n"); break;
+		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+			strDesc += _T("类型: 数组越界\n"); break;
+		case EXCEPTION_DATATYPE_MISALIGNMENT:
+			strDesc += _T("类型: 数据对齐错误\n"); break;
+		case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+		case EXCEPTION_INT_DIVIDE_BY_ZERO:
+			strDesc += _T("类型: 除零错误\n"); break;
+		case EXCEPTION_BREAKPOINT:
+			strDesc += _T("类型: 断点命中\n"); break;
+		case EXCEPTION_SINGLE_STEP:
+			strDesc += _T("类型: 单步执行\n"); break;
+		case EXCEPTION_GUARD_PAGE:
+			strDesc += _T("类型: 保护页面\n"); break;
+		case EXCEPTION_INVALID_HANDLE:
+			strDesc += _T("类型: 无效句柄\n"); break;
+		case 0xC0000194:  // EXCEPTION_POSSIBLE_DEADLOCK
+			strDesc += _T("类型: 可能死锁\n"); break;
+		case STATUS_HEAP_CORRUPTION:
+			strDesc += _T("类型: 堆损坏\n"); break;
+		case STATUS_STACK_BUFFER_OVERRUN:
+			strDesc += _T("类型: 栈缓冲区溢出\n"); break;
+		default:
+		{
+			CString strTemp;
+			strTemp.Format(_T("类型: 未知异常 (0x%08X)\n"), dwExceptionCode);
+			strDesc += strTemp;
+		}
+		break;
+		}
+	}
+
+	return strDesc;
+}
+
+// 获取调用栈信息
+void GetStackTrace(CString& strStack, _EXCEPTION_POINTERS* pExceptionInfo)
+{
+	strStack.Empty();
+
+	HANDLE hProcess = GetCurrentProcess();
+	HANDLE hThread = GetCurrentThread();
+
+	CONTEXT Context;
+	if (!pExceptionInfo)
+	{
+		RtlCaptureContext(&Context);
+	}
+	else
+	{
+		Context = *(pExceptionInfo->ContextRecord);
+	}
+
+	STACKFRAME64 StackFrame;
+	memset(&StackFrame, 0, sizeof(StackFrame));
+
+#ifdef _M_IX86
+	DWORD MachineType = IMAGE_FILE_MACHINE_I386;
+	StackFrame.AddrPC.Offset = Context.Eip;
+	StackFrame.AddrStack.Offset = Context.Esp;
+	StackFrame.AddrFrame.Offset = Context.Ebp;
+#elif defined(_M_AMD64)
+	DWORD MachineType = IMAGE_FILE_MACHINE_AMD64;
+	StackFrame.AddrPC.Offset = Context.Rip;
+	StackFrame.AddrStack.Offset = Context.Rsp;
+	StackFrame.AddrFrame.Offset = Context.Rbp;
+#elif defined(_M_ARM64)
+	DWORD MachineType = IMAGE_FILE_MACHINE_ARM64;
+	StackFrame.AddrPC.Offset = Context.Pc;
+	StackFrame.AddrStack.Offset = Context.Sp;
+	StackFrame.AddrFrame.Offset = Context.Fp;
+#else
+	DWORD MachineType = IMAGE_FILE_MACHINE_UNKNOWN;
+#endif
+
+	StackFrame.AddrPC.Mode = AddrModeFlat;
+	StackFrame.AddrStack.Mode = AddrModeFlat;
+	StackFrame.AddrFrame.Mode = AddrModeFlat;
+
+	strStack.Format(_T("调用栈:\n"));
+
+	for (int i = 0; i < 32; i++)
+	{
+		if (!StackWalk64(MachineType, hProcess, hThread, &StackFrame, &Context, NULL,
+			SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+			break;
+
+		if (StackFrame.AddrPC.Offset == 0)
+			break;
+
+		CString strLine;
+		strLine.Format(_T("  #%02d PC: 0x%08p"), i, (PVOID)StackFrame.AddrPC.Offset);
+
+		// 获取符号信息
+		BYTE symbolBuffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+		SYMBOL_INFO* pSymbol = (SYMBOL_INFO*)symbolBuffer;
+		memset(pSymbol, 0, sizeof(symbolBuffer));
+		pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+		pSymbol->MaxNameLen = MAX_SYM_NAME;
+
+		if (SymFromAddr(hProcess, StackFrame.AddrPC.Offset, NULL, pSymbol))
+		{
+			strLine.AppendFormat(_T("  %s"), CString(pSymbol->Name));
+		}
+
+		strStack += strLine + _T("\n");
+	}
+}
+
+// 崩溃处理回调函数
+LONG WINAPI CrashHandler(_EXCEPTION_POINTERS* pExceptionInfo)
+{
+	// 生成MiniDump
+	BOOL bDumpCreated = WriteMiniDump(pExceptionInfo);
+
+	// 获取异常信息
+	CString strException = GetExceptionDescription(pExceptionInfo);
+
+	// 获取调用栈
+	CString strStack;
+	GetStackTrace(strStack, pExceptionInfo);
+
+	// 写入日志
+	WriteCrashLog(_T("=== 程序崩溃报告 ==="),
+		_T("%s\n%s\nMiniDump: %s"),
+		strException.GetString(), strStack.GetString(),
+		bDumpCreated ? _T("已生成") : _T("生成失败"));
+
+	// 显示崩溃对话框
+	CString strMsg;
+	strMsg.Format(_T("程序发生崩溃!\n\n%s\n\n调用栈已保存到日志文件。\n请将日志文件发送给开发人员分析。"),
+		strException.GetString());
+
+	MessageBox(NULL, strMsg, _T("崩溃报告"), MB_OK | MB_ICONERROR | MB_TOPMOST);
+
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// 初始化崩溃捕获器
+void InitCrashHandler()
+{
+	// 初始化符号系统
+	SymInitialize(GetCurrentProcess(), NULL, TRUE);
+
+	// 设置全局异常处理
+	SetUnhandledExceptionFilter(CrashHandler);
+
+	WriteCrashLog(_T("=== 崩溃捕获器初始化 ==="),
+		_T("崩溃捕获器已成功初始化，系统将自动捕获未处理的异常。"));
+}
+
+
+// CAni_Data_Serever_PCApp 初始化
 
 BOOL CAni_Data_Serever_PCApp::InitInstance()
 {
+	// 初始化崩溃捕获器（放在最前面）
+	InitCrashHandler();
 	INITCOMMONCONTROLSEX InitCtrls;
 	InitCtrls.dwSize = sizeof(InitCtrls);
 	InitCtrls.dwICC = ICC_WIN95_CLASSES;
@@ -137,155 +430,155 @@ BOOL CAni_Data_Serever_PCApp::InitInstance()
 	
 	strPath.Format(_T("%sPlcLog.log"), LOG_PLC_LOG_PATH);
 	m_PlcLog = new CLogger(_T("PlcLog"), strPath, FALSE);
-	theApp.m_PlcLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_PlcLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sPlcHeartBitLog.log"), LOG_PlcHeartBit_LOG_PATH);
 	m_PlcHeartBitLog = new CLogger(_T("PlcHeartBitLog"), strPath, FALSE);
-	theApp.m_PlcHeartBitLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_PlcHeartBitLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sAlignLog.log"), LOG_ALIGN_LOG_PATH);
 	m_AlignLog = new CLogger(_T("AlignLog"), strPath, FALSE);
-	theApp.m_AlignLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_AlignLog->Info(_T("************************ SYSTEM START ************************"));
 
 	for (int ii = 0; ii < 10; ii++)
 	{
 		strPath.Format(_T("%s%s%dLog\\AlignSendReceiver%dLog.log"), LOG_PATH , _T("AlignSendReceiver"), ii + 1, ii + 1);
 		m_pAlignSendReceiverLog[ii] = new CLogger(CStringSupport::FormatString(_T("AlignSendReceiver%dLog"), ii + 1), strPath, FALSE);
-		theApp.m_pAlignSendReceiverLog[ii]->LOG_INFO(_T("************************ SYSTEM START ************************"));
+		theApp.m_pAlignSendReceiverLog[ii]->Info(_T("************************ SYSTEM START ************************"));
 	}
 
 	strPath.Format(_T("%sTimeOutLog.log"), LOG_TIME_OUT_LOG_PATH);
 	m_TimeOutLog = new CLogger(_T("TimeOutLog"), strPath, FALSE);
-	theApp.m_TimeOutLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_TimeOutLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sPgLog.log"), LOG_PG_LOG_PATH);
 	m_PgLog = new CLogger(_T("PgLog"), strPath, FALSE);
-	theApp.m_PgLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_PgLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sPgSendReceiverLog.log"), LOG_PG_SEND_RECEIVER_LOG_PATH);
 	m_PgSendReceiverLog = new CLogger(_T("PgSendReceiverLog"), strPath, FALSE);
-	theApp.m_PgSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_PgSendReceiverLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sFtpLog.log"), LOG_FTP_LOG_PATH);
 	m_pFTPLog = new CLogger(_T("FtpLog"), strPath, FALSE);
-	theApp.m_pFTPLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pFTPLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sDataStatusLog.log"), LOG_DATA_STATUS_PATH);
 	m_pDataStatusLog = new CLogger(_T("DataStatusLog"), strPath, FALSE);
-	theApp.m_pDataStatusLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pDataStatusLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sTactTimeLog.log"), LOG_TACT_TIME_PATH);
 	m_pTactTimeLog = new CLogger(_T("TactTimeLog"), strPath, FALSE);
-	theApp.m_pTactTimeLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pTactTimeLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sTraceLog.log"), LOG_TRACE_PATH);
 	m_pTraceLog = new CLogger(_T("TraceLog"), strPath, FALSE);
-	theApp.m_pTraceLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pTraceLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sAxisLog.log"), LOG_AXIS_PATH);
 	m_pAxisLog = new CLogger(_T("AxisLog"), strPath, FALSE);
-	theApp.m_pAxisLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pAxisLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sOperateTimeLog.log"), LOG_OPERATE_TIME_PATH);
 	m_pOperateTimeLog = new CLogger(_T("OperateTimeLog"), strPath, FALSE);
-	theApp.m_pOperateTimeLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pOperateTimeLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sTpLog.log"), LOG_TP_PATH);
 	m_pTpLog = new CLogger(_T("TpLog"), strPath, FALSE);
-	theApp.m_pTpLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pTpLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sTpSendReceiverLog.log"), LOG_TP_SEND_RECIEVER_PATH);
 	m_pTpSendReceiverLog = new CLogger(_T("TpSendReceiverLog"), strPath, FALSE);
-	theApp.m_pTpSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pTpSendReceiverLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sUserLoginOutLog.log"), LOG_USER_LOGIN_OUT_PATH);
 	m_pUserLoginOutLog = new CLogger(_T("UserLoginOutLog"), strPath, FALSE);
-	theApp.m_pUserLoginOutLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pUserLoginOutLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sUserLog.log"), LOG_USER_PATH);
 	m_pUserLog = new CLogger(_T("UserLog"), strPath, FALSE);
-	theApp.m_pUserLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pUserLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sFFUSendReceiverLog.log"), LOG_FFU_SEND_RECIEVER_PATH);
 	m_pFFUSendReceiverLog = new CLogger(_T("FFUSendReceiverLog"), strPath, FALSE);
-	theApp.m_pFFUSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pFFUSendReceiverLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sSendDefectCodeLog.log"), LOG_SEND_DEFECT_CODE_PATH);
 	m_pSendDefectCodeLog = new CLogger(_T("SendDefectCodeLog"), strPath, FALSE);
-	theApp.m_pSendDefectCodeLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pSendDefectCodeLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sARSSendReceiverLog.log"), LOG_ARS_SEND_RECIEVER_PATH);
 	m_pARSSendReceiverLog = new CLogger(_T("ARSSendReceiverLog"), strPath, FALSE);
-	theApp.m_pARSSendReceiverLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pARSSendReceiverLog->Info(_T("************************ SYSTEM START ************************"));
 
 #if _SYSTEM_AMTAFT_
 	strPath.Format(_T("%sViewingAngleLog.log"), LOG_VIEWING_ANGLE_LOG_PATH);
 	m_ViewingAngleLog = new CLogger(_T("ViewingAngleLog"), strPath, FALSE);
-	theApp.m_ViewingAngleLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_ViewingAngleLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sVisionLog.log"), LOG_VISION_LOG_PATH);
 	m_VisionLog = new CLogger(_T("VisionLog"), strPath, FALSE);
-	theApp.m_VisionLog->LOG_INFO(_T("*****z******************* SYSTEM START ************************"));
+	theApp.m_VisionLog->Info(_T("*****z******************* SYSTEM START ************************"));
 
 	strPath.Format(_T("%sLumitopLog.log"), LOG_LUMITOP_LOG_PATH);
 	m_LumitopLog = new CLogger(_T("LumitopLog"), strPath, FALSE);
-	theApp.m_LumitopLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_LumitopLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sVisionSendReceiver1Log.log"), LOG_VISION_SEND_RECIEVER_LOG_1);
 	m_pVisionSendReceiver1Log = new CLogger(_T("VisionSendReceiver1Log"), strPath, FALSE);
-	theApp.m_pVisionSendReceiver1Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pVisionSendReceiver1Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sVisionSendReceiver2Log.log"), LOG_VISION_SEND_RECIEVER_LOG_2);
 	m_pVisionSendReceiver2Log = new CLogger(_T("VisionSendReceiver2Log"), strPath, FALSE);
-	theApp.m_pVisionSendReceiver2Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pVisionSendReceiver2Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sViewingAngleSendReceiver1Log.log"), LOG_VIEWING_ANGLE_SEND_RECIEVER_LOG_1);
 	m_pViewingAngleSendReceiver1Log = new CLogger(_T("ViewingAngleSendReceiver1Log"), strPath, FALSE);
-	theApp.m_pViewingAngleSendReceiver1Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pViewingAngleSendReceiver1Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sViewingAngleSendReceiver2Log.log"), LOG_VIEWING_ANGLE_SEND_RECIEVER_LOG_2);
 	m_pViewingAngleSendReceiver2Log = new CLogger(_T("ViewingAngleSendReceiver2Log"), strPath, FALSE);
-	theApp.m_pViewingAngleSendReceiver2Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pViewingAngleSendReceiver2Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sViewingAngleSendReceiver3Log.log"), LOG_VIEWING_ANGLE_SEND_RECIEVER_LOG_3);
 	m_pViewingAngleSendReceiver3Log = new CLogger(_T("ViewingAngleSendReceiver3Log"), strPath, FALSE);
-	theApp.m_pViewingAngleSendReceiver3Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pViewingAngleSendReceiver3Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sViewingAngleSendReceiver4Log.log"), LOG_VIEWING_ANGLE_SEND_RECIEVER_LOG_4);
 	m_pViewingAngleSendReceiver4Log = new CLogger(_T("ViewingAngleSendReceiver4Log"), strPath, FALSE);
-	theApp.m_pViewingAngleSendReceiver4Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pViewingAngleSendReceiver4Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sLumitopSendReceiver1Log.log"), LOG_LUMITOP_SEND_RECIEVER_LOG_1);
 	m_pLumitopSendReceiver1Log = new CLogger(_T("LumitopSendReceiver1Log"), strPath, FALSE);
-	theApp.m_pLumitopSendReceiver1Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pLumitopSendReceiver1Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sLumitopSendReceiver2Log.log"), LOG_LUMITOP_SEND_RECIEVER_LOG_2);
 	m_pLumitopSendReceiver2Log = new CLogger(_T("LumitopSendReceiver2Log"), strPath, FALSE);
-	theApp.m_pLumitopSendReceiver2Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pLumitopSendReceiver2Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sLumitopSendReceiver3Log.log"), LOG_LUMITOP_SEND_RECIEVER_LOG_3);
 	m_pLumitopSendReceiver3Log = new CLogger(_T("LumitopSendReceiver3Log"), strPath, FALSE);
-	theApp.m_pLumitopSendReceiver3Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pLumitopSendReceiver3Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sLumitopSendReceiver4Log.log"), LOG_LUMITOP_SEND_RECIEVER_LOG_4);
 	m_pLumitopSendReceiver4Log = new CLogger(_T("LumitopSendReceiver4Log"), strPath, FALSE);
-	theApp.m_pLumitopSendReceiver4Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pLumitopSendReceiver4Log->Info(_T("************************ SYSTEM START ************************"));
 	
 	strPath.Format(_T("%sOpvLog.log"), LOG_OPV_PATH);
 	m_pOpvLog = new CLogger(_T("OpvLog"), strPath, FALSE);
-	theApp.m_pOpvLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pOpvLog->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sOpvSendReceiver1Log.log"), LOG_OPV_SEND_RECIEVER1_PATH);
 	m_pOpvSendReceiver1Log = new CLogger(_T("OpvSendReceiver1Log"), strPath, FALSE);
-	theApp.m_pOpvSendReceiver1Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pOpvSendReceiver1Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sOpvSendReceiver2Log.log"), LOG_OPV_SEND_RECIEVER2_PATH);
 	m_pOpvSendReceiver2Log = new CLogger(_T("OpvSendReceiver2Log"), strPath, FALSE);
-	theApp.m_pOpvSendReceiver2Log->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pOpvSendReceiver2Log->Info(_T("************************ SYSTEM START ************************"));
 
 	strPath.Format(_T("%sTestLog.log"), LOG_TEST_PATH);
 	m_pTestLog = new CLogger(_T("TestLog"), strPath, FALSE);
-	theApp.m_pTestLog->LOG_INFO(_T("************************ SYSTEM START ************************"));
+	theApp.m_pTestLog->Info(_T("************************ SYSTEM START ************************"));
 #endif
 
 	CCommandLineInfo cmdInfo;
@@ -963,8 +1256,8 @@ void CAni_Data_Serever_PCApp::GetShiftTime(int nTime, int nShiftTime)
 
 void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect defectinfo, int iType)
 {
-	theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start"), strPanelID, strFpcID);
-	theApp.m_pTestLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start %s"), strPanelID, strFpcID, strTypeName);
+	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start"), strPanelID, strFpcID);
+	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start %s"), strPanelID, strFpcID, strTypeName);
 	CString strPath, strFilePath, strCodeCount, strShift, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	if (iType == Machine_AOI)
@@ -983,8 +1276,8 @@ void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strF
 
 	ini[strTypeName][strCodeCount] = strCodeGrade;
 //220316 START
-	theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s"), strPanelID, strFpcID, strCodeGrade);
-	theApp.m_pTestLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s %s"), strPanelID, strFpcID, strCodeGrade, strTypeName);
+	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s"), strPanelID, strFpcID, strCodeGrade);
+	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s %s"), strPanelID, strFpcID, strCodeGrade, strTypeName);
 //220316 END
 }
 
@@ -1000,7 +1293,7 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 			if (!strDBCode.IsEmpty() && !strDBGrade.IsEmpty())
 			{
 				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
-				m_pTestLog->LOG_INFO(_T("LoadResultIndexCode DB OK: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+				m_pTestLog->Info(_T("LoadResultIndexCode DB OK: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
 					strPanelID, strFpcID, strDBCode, strDBGrade);
 				return;
 			}
@@ -1010,14 +1303,14 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 				strDBCode = _T("XPOXSD");
 				strDBGrade = _T("Y5");
 				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
-				m_pTestLog->LOG_WARN(_T("LoadResultIndexCode DB Empty, Use Default: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+				m_pTestLog->Warn(_T("LoadResultIndexCode DB Empty, Use Default: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
 					strPanelID, strFpcID, strDBCode, strDBGrade);
 				return;
 			}
 		}
 		else
 		{
-			m_pTestLog->LOG_WARN(_T("LoadResultIndexCode DB Query Failed: FpcID=%s, %s"),
+			m_pTestLog->Warn(_T("LoadResultIndexCode DB Query Failed: FpcID=%s, %s"),
 				strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
 		}
 	}
@@ -1083,7 +1376,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 		{
 			if (!strDBCode.IsEmpty())
 			{
-				m_pTestLog->LOG_INFO(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+				m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
 					strFpcID, strDBCode, strDBGrade);
 				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
 				bGetFromDB = TRUE;
@@ -1091,7 +1384,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 		}
 		else
 		{
-			m_pTestLog->LOG_INFO(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+			m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
 		}
 	}
 
@@ -1102,7 +1395,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	}
 
 	// 数据库获取失败，fallback到文件读取
-	m_pTestLog->LOG_INFO(_T("SetLoadResultCode: Fallback to file read"));
+	m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
 
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID); // 0628
@@ -1120,19 +1413,19 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 
 		if (FileExists(strFilePath))
 		{
-			theApp.m_pTestLog->LOG_INFO(_T("SetLoadResultCode finde : %s"), strFilePath);
+			theApp.m_pTestLog->Info(_T("SetLoadResultCode finde : %s"), strFilePath);
 			break;
 		}
 		else
 		{
-			theApp.m_pTestLog->LOG_INFO(_T("SetLoadResultCode Not finde : %s"), strFilePath);
+			theApp.m_pTestLog->Info(_T("SetLoadResultCode Not finde : %s"), strFilePath);
 		}
 	}
 
 	EZIni ini(strFilePath);
 
 	std::vector<CString> listOfKeyNames;
-	theApp.m_pTestLog->LOG_INFO(_T("strFilePath %s, %d"), strFilePath, FileExists(strFilePath));
+	theApp.m_pTestLog->Info(_T("strFilePath %s, %d"), strFilePath, FileExists(strFilePath));
 	for (auto InspNames : IndexInspNames)
 	{
 		ini[InspNames].EnumKeyNames(listOfKeyNames);
@@ -1151,7 +1444,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 			responseTokens.RemoveAll();
 			strCodeGrade = strCode = strGrade = _T("");
 
-			theApp.m_pTestLog->LOG_INFO(_T("strFilePath_ini %s"), strCodeGrade);
+			theApp.m_pTestLog->Info(_T("strFilePath_ini %s"), strCodeGrade);
 		}
 		listOfKeyNames.clear();
 	}
@@ -1172,14 +1465,14 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 			if (!strCode.IsEmpty())
 			{
 				strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), strCode, strGrade);
-				theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
+				theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB OK: %s"),
 					strPanelID, strFpcID, strCodeGrade);
 				return strCodeGrade;
 			}
 		}
 		else
 		{
-			theApp.m_PlcLog->LOG_WARN(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB Query Failed: %s"),
+			theApp.m_PlcLog->Warn(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB Query Failed: %s"),
 				strPanelID, strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
 		}
 	}
@@ -1208,9 +1501,9 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 	//220316 START
 	BOOL bFile_Ok = PathFileExists(strFilePath);
 	if (bFile_Ok == TRUE)
-		theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode FILE OK"), strPanelID, strFpcID);
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode FILE OK"), strPanelID, strFpcID);
 	else
-		theApp.m_PlcLog->LOG_INFO(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode FILE NG"), strPanelID, strFpcID);
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode FILE NG"), strPanelID, strFpcID);
 	//220316 END
 	EZIni ini(strFilePath);
 
@@ -2061,9 +2354,12 @@ void CAni_Data_Serever_PCApp::IndexCheck()
 	m_csIndexCheck.Lock();
 	for (int ii = 0; ii < MaxZone; ii++)
 	{
-		if (theApp.m_pEqIf->m_pMNetH->GetCurrentIndexZone(ii))
+		BOOL bIndexZone = theApp.m_pEqIf->m_pMNetH->GetCurrentIndexZone(ii);
+		//LogWrite(CStringSupport::FormatString(_T("[IndexCheck] Zone[%d] PLC GetCurrentIndexZone=%d"), ii, bIndexZone), 0);
+		if (bIndexZone)
 			theApp.m_CurrentIndexZone = ii;
 	}
+	//LogWrite(CStringSupport::FormatString(_T("[IndexCheck] Final: m_CurrentIndexZone=%d, MaxZone=%d, CZone=%d"), theApp.m_CurrentIndexZone, MaxZone, CZone), 0);
 	m_csIndexCheck.Unlock();
 }
 void CAni_Data_Serever_PCApp::TpDataLoad(int nShift)
@@ -3900,20 +4196,44 @@ void CAni_Data_Serever_PCApp::AlarmDataLoad()
 
 void CAni_Data_Serever_PCApp::TactTimeDataSave(int TactTimeUnit)
 {
+	// 安全检查：确保TactTimeUnit在有效范围内
+	if (TactTimeUnit < 0 || TactTimeUnit >= (int)m_vecTactName.size())
+	{
+		if (m_pTactTimeLog)
+		{
+			m_pTactTimeLog->Error(CStringSupport::FormatString(
+				_T("[TactTimeDataSave] 越界错误! TactTimeUnit=%d, m_vecTactName.size()=%d"),
+				TactTimeUnit, (int)m_vecTactName.size()));
+		}
+		return;
+	}
+
 	CString strTemp;
 	strTemp.Format(_T("%s_TactTime.ini"), theApp.m_strCurrentToday);
 
 	//strShift
 	EZIni ini(DATA_TACT_TIME_PATH + strTemp);
 
-	strTemp.Format(_T("%s_AVG"), theApp.m_vecTactName[TactTimeUnit].m_strTactTimeName);
-	ini[_T("TOTAL")][strTemp] = theApp.m_pTactTimeList[TactTimeUnit].m_iSumTimeValue;
-	strTemp.Format(_T("%s_COUNT"), theApp.m_vecTactName[TactTimeUnit].m_strTactTimeName);
-	ini[_T("TOTAL")][strTemp] = theApp.m_pTactTimeList[TactTimeUnit].m_iTactTimeCount;
+	strTemp.Format(_T("%s_AVG"), m_vecTactName[TactTimeUnit].m_strTactTimeName);
+	ini[_T("TOTAL")][strTemp] = m_pTactTimeList[TactTimeUnit].m_iSumTimeValue;
+	strTemp.Format(_T("%s_COUNT"), m_vecTactName[TactTimeUnit].m_strTactTimeName);
+	ini[_T("TOTAL")][strTemp] = m_pTactTimeList[TactTimeUnit].m_iTactTimeCount;
 }
 
 void CAni_Data_Serever_PCApp::TactTimeTotalDataSave(int TactTimeUnit, DWORD dwTime, BOOL bTotalFlag)
 {
+	// 安全检查：确保TactTimeUnit在有效范围内
+	if (TactTimeUnit < 0 || TactTimeUnit >= (int)m_vecTactName.size())
+	{
+		if (m_pTactTimeLog)
+		{
+			m_pTactTimeLog->Error(CStringSupport::FormatString(
+				_T("[TactTimeTotalDataSave] 越界错误! TactTimeUnit=%d, m_vecTactName.size()=%d"),
+				TactTimeUnit, (int)m_vecTactName.size()));
+		}
+		return;
+	}
+
 	m_csFileSave.Lock();
 	CString strTemp, strFilePath, strValue;
 	BOOL bFlag = FALSE;

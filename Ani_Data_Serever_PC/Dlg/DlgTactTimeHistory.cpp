@@ -1,4 +1,4 @@
-// DlgTactTimeHistory.cpp : ±¸Çö ÆÄÀÏÀÔ´Ï´Ù.
+// DlgTactTimeHistory.cpp : ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 //
 
 #include "stdafx.h"
@@ -8,7 +8,7 @@
 #include "StringSupport.h"
 #include "Tact.h"
 
-// CDlgTactTimeHistory ´ëÈ­ »óÀÚÀÔ´Ï´Ù.
+// CDlgTactTimeHistory ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 IMPLEMENT_DYNAMIC(CDlgTactTimeHistory, CDialog)
 
 CDlgTactTimeHistory::CDlgTactTimeHistory(CWnd* pParent /*=NULL*/)
@@ -83,7 +83,7 @@ void CDlgTactTimeHistory::OnOK()
 {
 }
 
-// CDlgTactTimeHistory ¸Þ½ÃÁö Ã³¸®±âÀÔ´Ï´Ù.
+// CDlgTactTimeHistory ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 void CDlgTactTimeHistory::UpdateTactTime(int itemIndex, CTact& tactTime)
 {
 	int index = 0;
@@ -112,7 +112,18 @@ void CDlgTactTimeHistory::OnTimer(UINT_PTR nIDEvent)
 
 	for (int ii = 0; ii < theApp.m_vecTactName.size(); ii++)
 	{
-		UpdateTactTime(ii, theApp.m_pTactTimeList[ii]);
+		// ï¿½ï¿½ï¿½ï¿½??ï¿½ï¿½?ï¿½ï¿½iiï¿½m_pTactTimeListï¿½ï¿½??
+		if (ii >= 0 && ii < MAX_TACT_NUM)
+		{
+			UpdateTactTime(ii, theApp.m_pTactTimeList[ii]);
+		}
+		else
+		{
+			CString strLog;
+			strLog.Format(_T("[CDlgTactTimeHistory::OnTimer] ï¿½ï¿½Í£??! ii=%d, MAX_TACT_NUM=%d"),
+				ii, MAX_TACT_NUM);
+			OutputDebugString(strLog);
+		}
 	}
 	
 	m_TactTimeListCtrl.UnlockWindowUpdate();

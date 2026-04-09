@@ -102,7 +102,7 @@ void CPgManager::SendPGMessage(CString strMsg, int iChNum, int iStageNum)
 #endif
 	delete lpCommand;
 
-	theApp.m_PgSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [MC -> PG] %s"), GetNowSystemTimeMilliseconds(), strSendMsg));
+	theApp.m_PgSendReceiverLog->Info(CStringSupport::FormatString(_T("[%s] [MC -> PG] %s"), GetNowSystemTimeMilliseconds(), strSendMsg));
 	m_csSocketSend.Unlock();
 }
 
@@ -114,7 +114,7 @@ void CPgManager::PgLogMessage(CString strContents)
 	m_csSocketSend.Lock();
 
 	g_MainLog->m_PgListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
-	theApp.m_PgLog->LOG_INFO(strContents);
+	theApp.m_PgLog->Info(strContents);
 
 	m_csSocketSend.Unlock();
 }
@@ -172,7 +172,7 @@ void CPgManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	// PG 返回数据可能一次粘在一起，使用 ETX 分隔后逐条解析
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);
 
-	theApp.m_PgSendReceiverLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] [PG -> MC] %s"), GetNowSystemTimeMilliseconds(), strData));
+	theApp.m_PgSendReceiverLog->Info(CStringSupport::FormatString(_T("[%s] [PG -> MC] %s"), GetNowSystemTimeMilliseconds(), strData));
 
 	if (responseTokens.GetSize() == 1)
 	{
@@ -234,6 +234,13 @@ void CPgManager::AOIDataReceived(CString strContents)
 	CString strPanelID;
 	CString strPreGammaResult;
 
+	if (responseTokens.GetSize() < 2)
+	{
+		PgLogMessage(CStringSupport::FormatString(_T("PG Response TokenCount=%d < 2, Raw=[%s]"),
+			responseTokens.GetSize(), strContents));
+		return;
+	}
+
 	if (responseTokens[0].CompareNoCase(_T("ch")))
 	{
 		PgLogMessage(_T("PG  Response Error !!!!"));
@@ -248,6 +255,13 @@ void CPgManager::AOIDataReceived(CString strContents)
 		iIndexNum = (iPanelCheal / MaxZone) - 1;	//ÆÐ³ÎÀÇ index ¹øÈ£ Azone = 0 , Bzone = 1 , CZone = 2 , DZone = 3
 	else
 		iIndexNum = (iPanelCheal / MaxZone);
+
+	if (responseTokens.GetSize() < 5)
+	{
+		PgLogMessage(CStringSupport::FormatString(_T("PG Response TokenCount=%d < 5, Raw=[%s]"),
+			responseTokens.GetSize(), strContents));
+		return;
+	}
 
 	if (responseTokens[3] == _T("CONTACT") || responseTokens[3] == _T("GET_RECIPE")) // Ch,Number,DONE,KEY,RESET
 		iPgOrderNum = PG_CONTACT_ON;
@@ -450,7 +464,7 @@ void CPgManager::AOIDataReceived(CString strContents)
 
 					theApp.LoadResultIndexCode(InspResult.m_cellId, InspResult.m_FpcID);
 					int iSendNGBuffer(Flow_AfterMachine);
-					theApp.m_pTestLog->LOG_INFO(_T("m_FlowResultDatas.size() : %d, panel id : %s"), theApp.m_FlowResultDatas.size(), InspResult.m_cellId);
+					theApp.m_pTestLog->Info(_T("m_FlowResultDatas.size() : %d, panel id : %s"), theApp.m_FlowResultDatas.size(), InspResult.m_cellId);
 					if (theApp.m_FlowResultDatas.size() > 0)
 					{
 						for (auto Grades : theApp.m_VecGradeFlow)
@@ -464,14 +478,14 @@ void CPgManager::AOIDataReceived(CString strContents)
 							{
 								//
 								//>> psh 0414
-								theApp.m_pTestLog->LOG_INFO(_T("m_FlowResultDatas find panel id : %s"), InspResult.m_cellId);
+								theApp.m_pTestLog->Info(_T("m_FlowResultDatas find panel id : %s"), InspResult.m_cellId);
 								if (theApp.m_strEqpId == "MFGAP" || theApp.m_strMachineType == "AFT")
 								{
-									theApp.m_pTestLog->LOG_INFO(_T("eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, InspResult.m_cellId);
+									theApp.m_pTestLog->Info(_T("eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, InspResult.m_cellId);
 									if (Grades.iFlow == Flow_Operator)
 									{
 										iSendNGBuffer = Grades.iFlow;
-										theApp.m_pTestLog->LOG_INFO(_T("iSendNGBuffer %d panel id : %s"), iSendNGBuffer, InspResult.m_cellId);
+										theApp.m_pTestLog->Info(_T("iSendNGBuffer %d panel id : %s"), iSendNGBuffer, InspResult.m_cellId);
 									}
 								}
 								else
@@ -483,12 +497,12 @@ void CPgManager::AOIDataReceived(CString strContents)
 					}
 					for (auto saveLogs : theApp.m_FlowResultDatas)
 					{
-						theApp.m_pTestLog->LOG_INFO(_T("Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, InspResult.m_cellId);
+						theApp.m_pTestLog->Info(_T("Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, InspResult.m_cellId);
 					}
 
 					//iSendNGBuffer = 2;   //test
 
-					theApp.m_pTestLog->LOG_INFO(_T("Flows Data Final: %s, Panel ID : %s,"), iSendNGBuffer == Flow_AfterMachine ? _T("OK Flow") : _T("NG Flow"), InspResult.m_cellId);
+					theApp.m_pTestLog->Info(_T("Flows Data Final: %s, Panel ID : %s,"), iSendNGBuffer == Flow_AfterMachine ? _T("OK Flow") : _T("NG Flow"), InspResult.m_cellId);
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_AllZonePos1DirectionResult + iPanelNum, &iSendNGBuffer); /* 1 : go OK, 2 : go NG Buff*/
 					theApp.m_FlowResultDatas.clear();
 					//<< 
@@ -529,7 +543,7 @@ void CPgManager::AOIDataReceived(CString strContents)
 									PgLogMessage(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
 										PG_IndexName[iIndexNum], iChNum, InspResult.m_cellId,
 										CodeList, theApp.m_VecPGCode_PG[iChNum].m_PGCode[0]));
-									theApp.m_pTestLog->LOG_DEBUG(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
+									theApp.m_pTestLog->Debug(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
 										PG_IndexName[iIndexNum], iChNum, InspResult.m_cellId,
 										CodeList, theApp.m_VecPGCode_PG[iChNum].m_PGCode[0]));
 									if (iCheckErr == PGCode_OK)
@@ -572,9 +586,16 @@ void CPgManager::ULDDataReceived(CString strContents)
 	CString strPanelID;
 	CString strPreGammaResult;
 
+	if (responseTokens.GetSize() < 2)
+	{
+		PgLogMessage(CStringSupport::FormatString(_T("[ULD] TokenCount=%d < 2, Raw=[%s]"),
+			responseTokens.GetSize(), strContents));
+		return;
+	}
+
 	if (responseTokens[0].CompareNoCase(_T("ch")))
 	{
-		PgLogMessage(_T("PG  Response Error !!!!"));
+		PgLogMessage(_T("[ULD] PG Response Error !!!!"));
 		return;
 	}
 
@@ -627,8 +648,8 @@ void CPgManager::ULDDataReceived(CString strContents)
 			{
 				if (theApp.m_bContact[iChNum] == TRUE && _ttoi(theApp.m_strPGName) == PG_MuhanZC)
 				{
-					theApp.m_VecManualStage[iPgOrderNum][iChNum].time_check.StopTimer();
-					theApp.m_VecManualStage[iPgOrderNum][iChNum].m_bResult = TRUE;
+					theApp.m_VecManualStage[iPgOrderNum][iPanelNum].time_check.StopTimer();
+					theApp.m_VecManualStage[iPgOrderNum][iPanelNum].m_bResult = TRUE;
 					theApp.m_ManualThread->ManualStageVecAdd(theApp.m_VecManualStage[iPgOrderNum][iPanelNum].m_cellId, theApp.m_VecManualStage[iPgOrderNum][iPanelNum].m_cellId, iChNum, ManualStageContactOff, PGContactOffTimer, m_iPcNum - 1);
 					PgLogMessage(CStringSupport::FormatString(_T("Ch %d Panel [%s] Contact Off ReStart"), iPanelCheal, theApp.m_VecManualStage[iPgOrderNum][iPanelNum].m_cellId));
 					CString strMsg = CStringSupport::FormatString(_T("Ch,%d,KEY,RESET"), iPanelCheal);
@@ -786,9 +807,16 @@ void CPgManager::GammaDataReceived(CString strContents)
 	int iPgOrderNum = 0;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
 
+	if (responseTokens.GetSize() < 2)
+	{
+		PgLogMessage(CStringSupport::FormatString(_T("[Gamma] TokenCount=%d < 2, Raw=[%s]"),
+			responseTokens.GetSize(), strContents));
+		return;
+	}
+
 	if (responseTokens[0].CompareNoCase(_T("ch")))
 	{
-		PgLogMessage(_T("PG  Response Error !!!!"));
+		PgLogMessage(_T("[Gamma] PG Response Error !!!!"));
 		return;
 	}
 
@@ -854,7 +882,7 @@ void CPgManager::GammaDataReceived(CString strContents)
 					m_csPgData.Unlock();
 				}
 				else
-					theApp.m_pTraceLog->LOG_INFO(_T("**************** PanelID [%s] Contact On Protocol Error ****************"), theApp.m_lastGammaVec[iStageNum][iPanelNum].m_cellId);
+					theApp.m_pTraceLog->Info(_T("**************** PanelID [%s] Contact On Protocol Error ****************"), theApp.m_lastGammaVec[iStageNum][iPanelNum].m_cellId);
 
 				theApp.m_lastGammaVec[iStageNum][iPanelNum].m_bResult = TRUE;
 			}

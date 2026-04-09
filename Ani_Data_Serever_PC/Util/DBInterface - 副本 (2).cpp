@@ -777,7 +777,8 @@ CString CDBInterface::GetSelectLatestByUniqueIDSQL(const CString& strUniqueID) c
 {
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
+        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, UniqueID, AOIResult, Code_AOI, Grade_AOI ")
+        _T("FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
         EscapeString(strUniqueID));
     return strSQL;
 }
@@ -964,20 +965,20 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
 
     TRACE(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s\n"), (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
     TRACE(_T("  SQL: %s\n"), (LPCTSTR)strSQL);
-    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s"),
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s"),
         (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
-    theApp.m_pTestLog->Info(_T("  SQL: %s"), (LPCTSTR)strSQL);
+    theApp.m_pTestLog->LOG_INFO(_T("  SQL: %s"), (LPCTSTR)strSQL);
 
     SQLHSTMT hStmt;
     if (!ExecuteQuery(strSQL, hStmt))
     {
-        TRACE(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s\n"), (LPCTSTR)m_strLastError);
-        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s"), (LPCTSTR)m_strLastError);
+        TRACE(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery 失败, Error=%s\n"), (LPCTSTR)m_strLastError);
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery 失败, Error=%s"), (LPCTSTR)m_strLastError);
         return FALSE;
     }
 
     TRACE(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据...\n"));
-    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据..."));
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据..."));
 
     SQLRETURN ret;
     int nFetchCount = 0;
@@ -986,8 +987,8 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
         if (ret == SQL_ERROR)
         {
             m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-            TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s\n"), m_strLastError);
-            theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s"), m_strLastError);
+            TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch失败 - %s\n"), m_strLastError);
+            theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] Fetch失败 - %s"), m_strLastError);
             SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
             return FALSE;
         }
@@ -1051,13 +1052,13 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
             defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height,
             (LPCTSTR)defect.Code_AOI, (LPCTSTR)defect.DefClass_AOI, (LPCTSTR)defect.DefName_AOI);
         TRACE(_T("%s\n"), (LPCTSTR)strFetchLog);
-        theApp.m_pTestLog->Info(strFetchLog);
+        theApp.m_pTestLog->LOG_INFO(strFetchLog);
 
         defects.push_back(defect);
     }
 
-    TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch completed, got %d defect records\n"), nFetchCount);
-    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch completed, got %d defect records"), nFetchCount);
+    TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch完成, 共获取 %d 条缺陷记录\n"), nFetchCount);
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUIDFromTable] Fetch完成, 共获取 %d 条缺陷记录"), nFetchCount);
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1221,26 +1222,26 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
     if (!m_bConnected)
     {
         m_strLastError = _T("Not connected to database");
-        TRACE(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s"), (LPCTSTR)strParentGUID);
+        TRACE(_T("[QueryDefectsByParentGUID] 失败: 未连接到数据库, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 失败: 未连接到数据库, ParentGUID=%s"), (LPCTSTR)strParentGUID);
         return FALSE;
     }
 
-	TRACE(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s"), (LPCTSTR)strParentGUID);
+	TRACE(_T("[QueryDefectsByParentGUID] 开始查询缺陷, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 开始查询缺陷, ParentGUID=%s"), (LPCTSTR)strParentGUID);
 
     if (!QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects))
     {
         defects.clear();
-        TRACE(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s\n"),
+        TRACE(_T("[QueryDefectsByParentGUID] 从 ivs_lcd_aoidefect 表查询失败, ParentGUID=%s, Error=%s\n"),
             (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
-        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s"),
+        theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 从 ivs_lcd_aoidefect 表查询失败, ParentGUID=%s, Error=%s"),
             (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
         return FALSE;
     }
 
-    TRACE(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d\n"), (LPCTSTR)strParentGUID, (int)defects.size());
-    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
+    TRACE(_T("[QueryDefectsByParentGUID] 查询完成, ParentGUID=%s, 缺陷数量=%d\n"), (LPCTSTR)strParentGUID, (int)defects.size());
+    theApp.m_pTestLog->LOG_INFO(_T("[QueryDefectsByParentGUID] 查询完成, ParentGUID=%s, 缺陷数量=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
     for (int i = 0; i < (int)defects.size(); i++)
     {
         const CDefectInfo& def = defects[i];
@@ -1249,7 +1250,7 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
             i, (LPCTSTR)def.Type, def.Pos_x, def.Pos_y, def.Pos_width, def.Pos_height,
             (LPCTSTR)def.Code_AOI, (LPCTSTR)def.DefClass_AOI, (LPCTSTR)def.DefName_AOI);
         TRACE(_T("%s\n"), (LPCTSTR)strDefLog);
-        theApp.m_pTestLog->Info(strDefLog);
+        theApp.m_pTestLog->LOG_INFO(strDefLog);
     }
 
     return TRUE;
@@ -1271,7 +1272,8 @@ BOOL CDBInterface::QueryByGUID(const CString& strGUID, CInspectionResult& result
 {
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE GUID = '%s'"),
+        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, UniqueID, AOIResult, Code_AOI, Grade_AOI ")
+        _T("FROM IVS_LCD_InspectionResult WHERE GUID = '%s'"),
         EscapeString(strGUID));
 
     SQLHSTMT hStmt;
@@ -1292,12 +1294,15 @@ BOOL CDBInterface::QueryByGUID(const CString& strGUID, CInspectionResult& result
         return FALSE;
     }
 
-    result.GUID = GetColumnString(hStmt, 2);
-    result.ScreenID = GetColumnString(hStmt, 3);
-    result.DeviceID = GetColumnString(hStmt, 4);
-    result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
-    result.AOIResult = GetColumnString(hStmt, 12);    // 12: AOIResult
-    result.Grade_AOI = GetColumnString(hStmt, 45);    // 45: Grade_AOI
+    result.SysID = GetColumnInt(hStmt, 1);           // 1: SysID
+    result.GUID = GetColumnString(hStmt, 2);          // 2: GUID
+    result.ScreenID = GetColumnString(hStmt, 3);     // 3: ScreenID
+    result.DeviceID = GetColumnString(hStmt, 4);     // 4: DeviceID
+    result.PlatformID = GetColumnInt(hStmt, 5);       // 5: PlatformID
+    result.UniqueID = GetColumnString(hStmt, 6);     // 6: UniqueID
+    result.AOIResult = GetColumnString(hStmt, 7);    // 7: AOIResult
+    result.Code_AOI = GetColumnString(hStmt, 8);     // 8: Code_AOI
+    result.Grade_AOI = GetColumnString(hStmt, 9);    // 9: Grade_AOI
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1329,12 +1334,14 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
     }
 
     result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
-    result.GUID = GetColumnString(hStmt, 2);
-    result.ScreenID = GetColumnString(hStmt, 3);
-    result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
-    result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
-    result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
-    result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
+    result.GUID = GetColumnString(hStmt, 2);       // 2: GUID
+    result.ScreenID = GetColumnString(hStmt, 3);  // 3: ScreenID
+    result.DeviceID = GetColumnString(hStmt, 4);  // 4: DeviceID
+    result.PlatformID = GetColumnInt(hStmt, 5);   // 5: PlatformID
+    result.UniqueID = GetColumnString(hStmt, 6);  // 6: UniqueID
+    result.AOIResult = GetColumnString(hStmt, 7); // 7: AOIResult
+    result.Code_AOI = GetColumnString(hStmt, 8); // 8: Code_AOI
+    result.Grade_AOI = GetColumnString(hStmt, 9); // 9: Grade_AOI
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1507,7 +1514,8 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
 
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
+        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, UniqueID, AOIResult, Code_AOI, Grade_AOI ")
+        _T("FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
         EscapeString(strBarcode));
 
     SQLHSTMT hStmt;

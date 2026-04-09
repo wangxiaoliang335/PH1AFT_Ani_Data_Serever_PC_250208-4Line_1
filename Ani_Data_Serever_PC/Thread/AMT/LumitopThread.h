@@ -32,6 +32,8 @@ public:
 	void ParsingPcTimeRequest(int Num, CString strContents);
 	void SocketSendto(int Num, CString strContents, int iCommand);
 	void LogWrite(CString strContents, int Num);
+	// LumitopLogWrite - 与LogWrite功能相同，用于Lumitop相关的日志记录
+	void LumitopLogWrite(CString strContents, int Num);
 	BOOL LumitopVecAdd(CString strPanel, CString strFpcID, int iPanelNum, int iIndexNum, int iPCNo, int iCurIndex);
 
 	void LumitopPanelCheck();

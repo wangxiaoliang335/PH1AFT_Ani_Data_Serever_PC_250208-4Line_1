@@ -116,6 +116,13 @@ private:
 	// 添加单个治具到检测队列（由 VisionInspectionMethod 统一调用）
 	void AddJigToInspection(int panelNum);
 
+	// VisionInspectionMethod 与 AddJigToInspection 共享数据用的成员变量
+	CString m_strJigPanel;
+	CString m_strJigFpcID;
+	CString m_strJigUniqueID;
+	int m_iJigCurIndex;
+	int m_iJigIndexPanelNum;
+
 	// ICW 断线去重：只在首次断线时打印一次日志，防止刷屏
 	BOOL m_bICWDisconnectedLogged;
 

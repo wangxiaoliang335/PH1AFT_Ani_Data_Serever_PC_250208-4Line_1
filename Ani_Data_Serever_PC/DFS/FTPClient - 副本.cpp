@@ -1,4 +1,4 @@
-// FTPClient.cpp: implementation of the CFTPClient class.
+﻿// FTPClient.cpp: implementation of the CFTPClient class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -374,7 +374,7 @@ void CFTPClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	}
 	m_pFtpConnection->SetCurrentDirectory(_T("/"));
 	
-	theApp.m_pFTPLog->Info2(_T("==================FTP connection Upload================="));
+	theApp.m_pFTPLog->LOG_INFO2(_T("==================FTP connection Upload================="));
 	if (!m_pFtpConnection->PutFile(source, dest)){
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
@@ -386,7 +386,7 @@ void CFTPClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;
 	bSend = TRUE;
-	theApp.m_pFTPLog->Info2(_T("====================FTP connection Close========================="));
+	theApp.m_pFTPLog->LOG_INFO2(_T("====================FTP connection Close========================="));
 	// close FTP connection
 }
 
@@ -465,7 +465,7 @@ void CFTPClient::DownLoadFile(CString &source, CString &dest, BOOL &bSend)
 	}
 	CString str;
 	str.Format(_T("==================FTP connection DownLoad source : %s , dest : %s ================="), source, dest);
-	theApp.m_pFTPLog->Info2(str);
+	theApp.m_pFTPLog->LOG_INFO2(str);
 	if (!m_pFtpConnection->GetFile(source, dest)){
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
@@ -477,7 +477,7 @@ void CFTPClient::DownLoadFile(CString &source, CString &dest, BOOL &bSend)
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;
 	bSend = TRUE;
-	theApp.m_pFTPLog->Info2(_T("====================FTP connection Close========================="));
+	theApp.m_pFTPLog->LOG_INFO2(_T("====================FTP connection Close========================="));
 	// close FTP connection
 }
 
@@ -499,7 +499,10 @@ void CFTPClient::Disconnect()
 void CFTPClient::AddTransferFile(SJobDataShop strTransferFile)
 {
 	if (strTransferFile.Job_ID.IsEmpty())
-		theApp.m_pFTPLog->Info(_T("Job_ID Error"));
+	{
+		theApp.m_pFTPLog->LOG_INFO(_T("Job_ID Error - Empty, Cassette:%s, FpcID:%s"),
+			strTransferFile.Cassette_Sequence_No, strTransferFile.FPC_ID);
+	}
 
 	m_csLock.Lock();
 	m_transferFileList.push(strTransferFile);
@@ -541,7 +544,7 @@ void CFTPClient::RunFtpUploadThread()
 				m_csLock.Unlock();
 				if (pJobData.Job_ID.IsEmpty() == FALSE)
 				{
-					theApp.m_pFTPLog->Debug(_T("FileServer START Job ID : %s, %s"), pJobData.Job_ID, pJobData.Cassette_Sequence_No);
+					theApp.m_pFTPLog->LOG_DEBUG(_T("FileServer START Job ID : %s, %s"), pJobData.Job_ID, pJobData.Cassette_Sequence_No);
 
 					strFileServerPath = m_strLogin + _T("/") + pJobData.Cassette_Sequence_No + _T("/") + pJobData.Job_ID + _T(".dat");
 
@@ -566,10 +569,11 @@ void CFTPClient::RunFtpUploadThread()
 						DataCompare(strTemp, pJobData);
 					}
 				}
-				else
-				{
-					theApp.m_pFTPLog->Info2(_T("Job ID length is short."));
-				}
+			else
+			{
+				theApp.m_pFTPLog->LOG_INFO(_T("Job ID Empty - Skip FTP, Cassette:%s, FpcID:%s, TypeNum:%d"),
+					pJobData.Cassette_Sequence_No, pJobData.FPC_ID, pJobData.TypeNum);
+			}
 
 				m_csLock.Lock();
 				m_transferFileList.pop();
@@ -774,17 +778,11 @@ BOOL CFTPClient::DataCompare(CString strPath, SJobDataShop pJobDataShop)
 		{
 			if (strInfo.Find(_T("=")) != -1)
 			{
-				strInfo.Remove(_T('\''));
+				strInfo.Replace(_T("』"), _T(""));
 				responseTokens.RemoveAll();
 				CStringSupport::GetTokenArray(strInfo, '=', responseTokens);
-				if (responseTokens.GetSize() < 2)
-				{
-					theApp.m_pFTPLog->Warn(_T("[ModuleInfoLoad] strInfo=%s TokenCount=%d insufficient"),
-						strInfo, responseTokens.GetSize());
-					continue;
-				}
 				m_strModuleInfo[iCount] = responseTokens[1].Trim();
-
+				
 				iCount++;
 			}
 		}

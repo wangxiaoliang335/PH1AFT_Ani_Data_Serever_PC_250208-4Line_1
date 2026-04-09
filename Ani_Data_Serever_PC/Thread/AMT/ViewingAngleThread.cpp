@@ -56,8 +56,8 @@ void CViewingAngleThread::ThreadRun()
 
 			}
 
-			//TEST Model ÀÌ (TRUE) Model º¯°æµµ ¾Èº¸°í ±×³É °è¼Ó ÁøÇà ÇÕ´Ï´Ù.
-			//TEST Model ÀÌ (FALSE) Model º¯°æ ¹× »ý¼º °è¼Ó check 
+			//TEST Model ?? (TRUE) Model ???? ????? ??? ??? ???? ????.
+			//TEST Model ?? (FALSE) Model ???? ?? ???? ??? check 
 			if (theApp.m_AnglePassMode == FALSE)
 			{
 				if (theApp.m_PlcConectStatus == FALSE || theApp.m_ChangeModelViewingAngle1 == TRUE || theApp.m_ChangeModelViewingAngle2 == TRUE
@@ -118,7 +118,7 @@ void CViewingAngleThread::ThreadRun()
 						ViewingAnglePLCResult(InspResult.m_iPanelNum, PLC_ResultValue[m_codeTimeOut], m_codeTimeOut, InspResult.m_cellId);
 						InspResult.m_bResult = TRUE;
 
-						theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("Viewing Angle [%s] Time out"), InspResult.m_cellId));
+						theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("Viewing Angle [%s] Time out"), InspResult.m_cellId));
 					}
 				}
 				else if (InspResult.m_bInspStart == TRUE)
@@ -159,7 +159,7 @@ void CViewingAngleThread::ThreadRun()
 
 void CViewingAngleThread::ViewingAngleFirstCheckMethod(int iPanelNum)
 {
-	//Ã³À½ º¸³»ÁÖ´Â°ÍÀÌ IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ¸ðµ¨¸í(MC_MODEL)
+	//??? ??????????? IO (MC_ARE_YOU_THERE) , PCTime(MC_PCTIME), ???(MC_MODEL)
 	BOOL bModelCreate, bModelChange;
 	CString strCommand = CStringSupport::FormatString(_T("%d,%d"), MC_ARE_YOU_THERE, theApp.m_ViewingAngleSocketManager[iPanelNum].m_ViewingAngleCheckCount);
 	SocketSendto(iPanelNum, strCommand, MC_ARE_YOU_THERE);
@@ -285,6 +285,13 @@ void CViewingAngleThread::ViewingAngleMethod(int iPanelNum)
 	}
 	theApp.IndexCheck();
 	iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - BZone)) % 4;
+	// ï¿½ï¿½ï¿½ï¿½??ï¿½ï¿½m_indexList ï¿½ï¿½ï¿½? 4ï¿½ï¿½ABCZone ï¿½ï¿½ï¿½ 4 ??æ´£ï¿½
+	if (iCurIndex < 0 || iCurIndex >= theApp.m_indexList.size())
+	{
+		LogWrite(CStringSupport::FormatString(_T("[ViewingAngleInspectionMethod] iCurIndex=%d out of range (m_indexList.size()=%d), Panel=%d"),
+			iCurIndex, theApp.m_indexList.size(), iPanelNum), iPanelNum);
+		iCurIndex = 0;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½??
+	}
 	iIndexPanelNum = theApp.m_indexList[iCurIndex].m_indexNum + iPanelNum;
 	strProcessID = theApp.GetProcessID(strPanel);
 
@@ -355,7 +362,7 @@ void CViewingAngleThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	int Num = ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL1_PORT_NUM) ? PanelNum1 : ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL2_PORT_NUM) ? 
 		PanelNum2 : ntohs(addrin.GetPort()) == _ttoi(VIEWING_ANGLE_PANEL3_PORT_NUM) ? PanelNum3 : PanelNum4;
 
-	//Åë½ÅÁß ¿¬°á µÇ¾î µé¾î¿Ã°æ¿ì¿¡´Â for ¹®À¸·Î ETX ±âÁØÀ¸·Î ÆÄ½ÌÇØ¼­ ÀüºÎ °¡Á®¿Ã¼ö ÀÖµµ·Ï ¼öÁ¤
+	//????? ???? ??? ?????????? for ?????? ETX ???????? ?????? ???? ??????? ????? ????
 	CString strData, m_strHeader, m_strCommand, m_strContents, strParsing;
 	int iFind, iFindSTX;
 	MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<LPCSTR>(lpBuffer), dwCount, strData.GetBuffer(dwCount + 1), dwCount + 1);
@@ -399,10 +406,10 @@ void CViewingAngleThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 
 		switch (Num)
 		{
-		case PanelNum1: theApp.m_pViewingAngleSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
-		case PanelNum2: theApp.m_pViewingAngleSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
-		case PanelNum3: theApp.m_pViewingAngleSendReceiver3Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
-		case PanelNum4: theApp.m_pViewingAngleSendReceiver4Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
+		case PanelNum1: theApp.m_pViewingAngleSendReceiver1Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
+		case PanelNum2: theApp.m_pViewingAngleSendReceiver2Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
+		case PanelNum3: theApp.m_pViewingAngleSendReceiver3Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
+		case PanelNum4: theApp.m_pViewingAngleSendReceiver4Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); break;
 		}
 
 		CString sendMsg;
@@ -605,9 +612,9 @@ BOOL CViewingAngleThread::getConectCheck()
 	GetSockName(addrin);
 	LONG  uAddr = addrin.GetIPAddr();
 	if (uAddr == 0)
-		return FALSE;	//Á¢¼Ó¾ÈÇÔ
+		return FALSE;	//???????
 	else
-		return TRUE;	//Á¢¼ÓÇÔ
+		return TRUE;	//??????
 }
 
 bool CViewingAngleThread::SocketServerOpen(CString strServerPort)
@@ -639,7 +646,7 @@ BOOL CViewingAngleThread::CreateTask(){
 	m_pThreadViewingAngle = ::AfxBeginThread(ViewingAngleThreadProc, this, THREAD_PRIORITY_NORMAL, 0, CREATE_SUSPENDED);
 	if (!m_pThreadViewingAngle)
 		bRet = FALSE;
-	m_pThreadViewingAngle->m_bAutoDelete = FALSE;	/// ¾²·¹µå Á¾·á½Ã WaitForSingleObject Àû¿ëÀ§ÇØ...
+	m_pThreadViewingAngle->m_bAutoDelete = FALSE;	/// ?????? ????? WaitForSingleObject ????????...
 	m_pThreadViewingAngle->ResumeThread();
 	return TRUE;
 }
@@ -656,7 +663,7 @@ void CViewingAngleThread::CloseTask()
 			Delay(100, TRUE);
 			if (::WaitForSingleObject(m_pThreadViewingAngle->m_hThread, 1000) == WAIT_TIMEOUT) {
 				::TerminateThread(m_pThreadViewingAngle->m_hThread, 1L);
-				theApp.m_ViewingAngleLog->LOG_INFO(_T("Terminate ViewingAngle Thread"));
+				theApp.m_ViewingAngleLog->Info(_T("Terminate ViewingAngle Thread"));
 			}
 		}
 		delete m_pThreadViewingAngle;
@@ -685,10 +692,10 @@ void CViewingAngleThread::SocketSendto(int Num ,CString strContents, int iComman
 
 	switch (Num)
 	{
-	case PanelNum1: theApp.m_pViewingAngleSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
-	case PanelNum2: theApp.m_pViewingAngleSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
-	case PanelNum3: theApp.m_pViewingAngleSendReceiver3Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
-	case PanelNum4: theApp.m_pViewingAngleSendReceiver4Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
+	case PanelNum1: theApp.m_pViewingAngleSendReceiver1Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
+	case PanelNum2: theApp.m_pViewingAngleSendReceiver2Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
+	case PanelNum3: theApp.m_pViewingAngleSendReceiver3Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
+	case PanelNum4: theApp.m_pViewingAngleSendReceiver4Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents)); break;
 	}
 
 	m_csSocketSend.Unlock();
@@ -707,7 +714,7 @@ void CViewingAngleThread::LogWrite(CString strContents, int iPanelNum)
 	case PanelNum4: g_DlgMainView->m_ViewingAngleListBox[1].InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents)); break;
 	}
 	
-	theApp.m_ViewingAngleLog->LOG_INFO(strContents);
+	theApp.m_ViewingAngleLog->Info(strContents);
 }
 
 void CViewingAngleThread::ViewingAnglePLCError(CString ErrorMsg, int ErrorCode, int iPanelNum)

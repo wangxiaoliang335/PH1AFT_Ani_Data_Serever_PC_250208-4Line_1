@@ -1,4 +1,4 @@
-// DefectView.cpp : ±¸Çö ÆÄÀÏÀÔ´Ï´Ù.
+// DefectView.cpp : ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 //
 
 #include "stdafx.h"
@@ -51,7 +51,7 @@ BEGIN_EVENTSINK_MAP(CDefectView, CFormView)
 END_EVENTSINK_MAP()
 
 
-// CDefectView Áø´ÜÀÔ´Ï´Ù.
+// CDefectView ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 #ifdef _DEBUG
 void CDefectView::AssertValid() const
@@ -68,7 +68,7 @@ void CDefectView::Dump(CDumpContext& dc) const
 #endif //_DEBUG
 
 
-// CDefectView ¸Þ½ÃÁö Ã³¸®±âÀÔ´Ï´Ù.
+// CDefectView ï¿½Þ½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 
 void CDefectView::OnInitialUpdate()
 {
@@ -123,7 +123,7 @@ void CDefectView::SetComboBoxReadOnly(int item)
 
 BOOL CDefectView::Create(LPCTSTR lpszClassName, LPCTSTR lpszWindowName, DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID, CCreateContext* pContext)
 {
-	// TODO: ¿©±â¿¡ Æ¯¼öÈ­µÈ ÄÚµå¸¦ Ãß°¡ ¹×/¶Ç´Â ±âº» Å¬·¡½º¸¦ È£ÃâÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ Æ¯ï¿½ï¿½È­ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ ï¿½ï¿½/ï¿½Ç´ï¿½ ï¿½âº» Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ È£ï¿½ï¿½ï¿½Õ´Ï´ï¿½.
 
 	return CFormView::Create(lpszClassName, lpszWindowName, dwStyle, rect, pParentWnd, nID, pContext);
 }
@@ -174,14 +174,14 @@ void CDefectView::OnInitialList()
 	//
 	//if (!DfsInfo.LoadPanelDFSInfo(strFilePath, Machine_AOI))
 	//{
-	//	theApp.getMsgBox(MS_OK, _T("NO DFS INFO"), _T("NO DFS INFO"), _T("Ùé DFSãáãÓ"));
+	//	theApp.getMsgBox(MS_OK, _T("NO DFS INFO"), _T("NO DFS INFO"), _T("ï¿½ï¿½ DFSï¿½ï¿½ï¿½ï¿½"));
 	//	return;
 	//}
 	//SetDefectCodeValue(DfsInfo);
 	//
 	//if (m_vecDefectInfo.size() == 0)
 	//{
-	//	theApp.getMsgBox(MS_OK, _T("NO DFS INFO"), _T("NO DFS INFO"), _T("Ùé DFSãáãÓ"));
+	//	theApp.getMsgBox(MS_OK, _T("NO DFS INFO"), _T("NO DFS INFO"), _T("ï¿½ï¿½ DFSï¿½ï¿½ï¿½ï¿½"));
 	//	return;
 	//}
 	//
@@ -219,8 +219,18 @@ void CDefectView::SetDefectCodeValue(CDFSInfo DFS)
 
 void CDefectView::OnSelchangeCmbDefectCommand()
 {
-	// TODO: ¿©±â¿¡ ÄÁÆ®·Ñ ¾Ë¸² Ã³¸®±â ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½Ë¸ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	int iCmbValue = m_cmbDefectCommand.GetCurSel();
+
+	// ï¿½ï¿½ï¿½ï¿½??ï¿½ï¿½?ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½??
+	if (iCmbValue < 0 || iCmbValue >= (int)m_vecDefectInfo.size())
+	{
+		CString strLog;
+		strLog.Format(_T("[CDefectView::OnSelchangeCmbDefectCommand] ï¿½ï¿½Í£??! iCmbValue=%d, m_vecDefectInfo.size()=%d"),
+			iCmbValue, (int)m_vecDefectInfo.size());
+		OutputDebugString(strLog);
+		return;
+	}
 
 	CString msg;
 	msg.Format(_T("%d"), iCmbValue + 1);
@@ -238,7 +248,7 @@ void CDefectView::OnSelchangeCmbDefectCommand()
 
 void CDefectView::OnSelchangeCmbDefectClean()
 {
-	// TODO: ¿©±â¿¡ ÄÁÆ®·Ñ ¾Ë¸² Ã³¸®±â ÄÚµå¸¦ Ãß°¡ÇÕ´Ï´Ù.
+	// TODO: ï¿½ï¿½ï¿½â¿¡ ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½Ë¸ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ß°ï¿½ï¿½Õ´Ï´ï¿½.
 	int iCmbValue = m_cmbDefectCommand.GetCurSel();
 
 	CString msg = _T("");

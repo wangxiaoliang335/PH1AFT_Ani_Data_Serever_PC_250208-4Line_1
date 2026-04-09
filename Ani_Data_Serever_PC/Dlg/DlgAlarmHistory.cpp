@@ -161,11 +161,11 @@ void  CDlgAlarmHistory::AlarmDataCheck()
 
 		m_alarmListCtrl.LockWindowUpdate();
 
-		for (int ii = 0; ii < theApp.m_AlarmDataList.size(); ii++)
+		// 安全检查：确保不会超过vector大小
+		int iMaxCount = min((int)theApp.m_AlarmDataList.size(), 1000);
+		for (int ii = 0; ii < iMaxCount; ii++)
 		{
 			SetAlarmData(ii, theApp.m_AlarmDataList[ii]);
-			if (ii == 1000)
-				break;
 		}
 		m_alarmListCtrl.UnlockWindowUpdate();
 	}
@@ -174,6 +174,17 @@ void  CDlgAlarmHistory::AlarmDataCheck()
 	{
 		vector<AlarmDataItem> vecRankList;
 		vecRankList.clear();
+
+		// 安全检查：确保m_iRankShiftType在有效范围内（m_AlarmRankCount是固定大小数组[2]）
+		if (m_iRankShiftType < 0 || m_iRankShiftType >= 2)
+		{
+			CString strLog;
+			strLog.Format(_T("[CDlgAlarmHistory::AlarmDataCheck] 越界访问! m_iRankShiftType=%d, valid range is 0-1"),
+				m_iRankShiftType);
+			OutputDebugString(strLog);
+			m_alarmRankCtrl.DeleteAllItems();
+			return;
+		}
 
 		if (theApp.m_AlarmRankCount[m_iRankShiftType].size() == 0)
 		{
@@ -195,11 +206,11 @@ void  CDlgAlarmHistory::AlarmDataCheck()
 			m_bRankClickFlag = TRUE;
 		}
 			
-		for (int ii = 0; ii < vecRankList.size(); ii++)
+		// 安全检查：确保不会超过vector大小
+		int iMaxCount = min((int)vecRankList.size(), 1000);
+		for (int ii = 0; ii < iMaxCount; ii++)
 		{
 			SetAlarmData(ii, vecRankList[ii]);
-			if (ii == 1000)
-				break;
 		}
 		m_alarmRankCtrl.UnlockWindowUpdate();
 	}

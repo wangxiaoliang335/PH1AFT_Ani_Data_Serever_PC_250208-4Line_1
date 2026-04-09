@@ -146,7 +146,7 @@ void CLumitopThread::ThreadRun()
 							InspResult.m_iIndexPanelNum);
 
 						InspResult.m_bResult = TRUE;
-						theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("[PC : %d] Lumitop [%s] Time out"), InspResult.m_iPCNum, InspResult.m_cellId));
+						theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("[PC : %d] Lumitop [%s] Time out"), InspResult.m_iPCNum, InspResult.m_cellId));
 					}
 				}
 				else if (InspResult.m_bInspStart == TRUE)
@@ -239,13 +239,13 @@ void CLumitopThread::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 		m_lastRequest[Num] = m_strContents;
 
 		if (Num == Lumitop_PC1)
-			theApp.m_pLumitopSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+			theApp.m_pLumitopSendReceiver1Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
 		else if (Num == Lumitop_PC2)
-			theApp.m_pLumitopSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+			theApp.m_pLumitopSendReceiver2Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
 		else if (Num == Lumitop_PC3)
-			theApp.m_pLumitopSendReceiver3Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
+			theApp.m_pLumitopSendReceiver3Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData));
 		else
-			theApp.m_pLumitopSendReceiver4Log->LOG_INFO(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); 
+			theApp.m_pLumitopSendReceiver4Log->Info(CStringSupport::FormatString(_T("[VS -> MC] [Command : %s] ->%s"), m_lastCommand[Num], strData)); 
 
 		CString sendMsg;
 		switch (iCommand)
@@ -535,6 +535,13 @@ void CLumitopThread::LumitopInspectionMethod(int Num, int panelNum)
 		strPanel = strFpcID;
 	theApp.IndexCheck();
 	iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - DZone)) % 4;
+	// 边界检查：m_indexList 大小为 4（ABCZone 各占 4 个区域）
+	if (iCurIndex < 0 || iCurIndex >= theApp.m_indexList.size())
+	{
+		LumitopLogWrite(CStringSupport::FormatString(_T("[LumitopInspectionMethod] iCurIndex=%d 越界 (m_indexList.size()=%d), Panel=%d"),
+			iCurIndex, theApp.m_indexList.size(), panelNum), Num);
+		iCurIndex = 0;  // 安全默认值
+	}
 	indexPanelNum = theApp.m_indexList[iCurIndex].m_indexNum + panelNum;
 	strProcessID = theApp.GetProcessID(strPanel);
 
@@ -555,8 +562,17 @@ void CLumitopThread::ParsingGrabEnd(int Num, CString strContents)
 	CStringArray responseTokens;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
 
-	strPanelID = responseTokens[0];
-	strPanelID.Trim();
+	if (responseTokens.GetSize() < 1)
+	{
+		LumitopLogWrite(CStringSupport::FormatString(_T("[ParsingGrabEnd] strContents=%s TokenCount=%d not enough"),
+			strContents, responseTokens.GetSize()), Num);
+		strPanelID = _T("");
+	}
+	else
+	{
+		strPanelID = responseTokens[0];
+		strPanelID.Trim();
+	}
 
 	TRACE(_T("[ParsingGrabEnd] RCV MC_GRAB_END: PanelID=%s\n"), strPanelID);
 	sendMsg.Format(_T("%d,%s"), MC_GRAB_END_RECEIVE, strPanelID);
@@ -583,6 +599,13 @@ void CLumitopThread::ParsingGrabEnd(int Num, CString strContents)
 void CLumitopThread::CG16_PatternChange(int Num)
 {
 	int iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - DZone)) % 4;
+	// 边界检查：m_indexList 大小为 4（ABCZone 各占 4 个区域）
+	if (iCurIndex < 0 || iCurIndex >= theApp.m_indexList.size())
+	{
+		LumitopLogWrite(CStringSupport::FormatString(_T("[CG16_PatternChange] iCurIndex=%d 越界 (m_indexList.size()=%d)"),
+			iCurIndex, theApp.m_indexList.size()), Num);
+		iCurIndex = 0;  // 安全默认值
+	}
 	int indexPanelNum = theApp.m_indexList[iCurIndex].m_indexNum + Num;
 
 	if (m_iPattern_Num[Num] < 0 || m_iPattern_Num[Num] > 9)
@@ -601,10 +624,20 @@ void CLumitopThread::SummeryCG16(int Num, CString strContents)
 	CStringArray responseTokens;
 	CStringSupport::GetTokenArray(strContents, _T(','), responseTokens);
 
-	strPanelID = responseTokens[0];
-	strPanelID.Trim();
-	strFpcID = responseTokens[1];
-	strFpcID.Trim();
+	if (responseTokens.GetSize() < 2)
+	{
+		LumitopLogWrite(CStringSupport::FormatString(_T("[SummeryCG16] strContents=%s TokenCount=%d not enough"),
+			strContents, responseTokens.GetSize()), Num);
+		strPanelID = _T("");
+		strFpcID = _T("");
+	}
+	else
+	{
+		strPanelID = responseTokens[0];
+		strPanelID.Trim();
+		strFpcID = responseTokens[1];
+		strFpcID.Trim();
+	}
 	int iDefect_Num = _ttoi(responseTokens[2]);
 	sendMsg.Format(_T("%d,%s,%s"), MC_INSPECTION_RESULT_RECEIVE, strPanelID, strFpcID);
 	SocketSendto(Num, sendMsg, MC_INSPECTION_RESULT_RECEIVE);
@@ -784,7 +817,7 @@ void CLumitopThread::CloseTask()
 			Delay(100, TRUE);
 			if (::WaitForSingleObject(m_pThreadLumitop->m_hThread, 1000) == WAIT_TIMEOUT) {
 				::TerminateThread(m_pThreadLumitop->m_hThread, 1L);
-				theApp.m_PgLog->LOG_INFO(_T("Terminate Lumitop Thread"));
+				theApp.m_PgLog->Info(_T("Terminate Lumitop Thread"));
 			}
 		}
 		delete m_pThreadLumitop;
@@ -811,13 +844,13 @@ void CLumitopThread::SocketSendto(int Num, CString strContents, int iCommand)
 	m_lastContent[Num] = strContents;
 
 	if (Num == Lumitop_PC1)
-		theApp.m_pLumitopSendReceiver1Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+		theApp.m_pLumitopSendReceiver1Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
 	else if (Num == Lumitop_PC2)
-		theApp.m_pLumitopSendReceiver2Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+		theApp.m_pLumitopSendReceiver2Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
 	else if (Num == Lumitop_PC3)
-		theApp.m_pLumitopSendReceiver3Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+		theApp.m_pLumitopSendReceiver3Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
 	else if (Num == Lumitop_PC4)
-		theApp.m_pLumitopSendReceiver4Log->LOG_INFO(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
+		theApp.m_pLumitopSendReceiver4Log->Info(CStringSupport::FormatString(_T("[MC -> VS] [Command : %s] ->%s"), MC_PacketNameTable[iCommand], strContents));
 
 	m_csSocketSend.Unlock();
 }
@@ -829,7 +862,20 @@ void CLumitopThread::LogWrite(CString strContents, int Num)
 
 	g_DlgMainView->m_ViewingAngleListBox[Num%2].InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
 	//g_MainLog->m_PgListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
-	theApp.m_LumitopLog->LOG_INFO(strContents);
+	theApp.m_LumitopLog->Info(strContents);
+}
+
+void CLumitopThread::LumitopLogWrite(CString strContents, int Num)
+{
+	if (theApp.m_bExitFlag == FALSE)
+		return;
+
+	// 写入到视图列表框
+	g_DlgMainView->m_ViewingAngleListBox[Num % 2].InsertString(0,
+		CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+
+	// 写入到Lumitop专用日志
+	theApp.m_LumitopLog->Info(strContents);
 }
 
 void CLumitopThread::LumitopPLCResult(int Num, int iPanelNum, CString ResultMsg, int ResultCode, CString strPanelID, int iIndexPanelNum)

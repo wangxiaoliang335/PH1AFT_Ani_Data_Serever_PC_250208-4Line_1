@@ -400,7 +400,7 @@ void CDFSClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	}
 	m_pFtpConnection->SetCurrentDirectory(_T("/"));
 	
-	theApp.m_pFTPLog->Info2(_T("==================FTP connection Upload================="));
+	theApp.m_pFTPLog->LOG_INFO2(_T("==================FTP connection Upload================="));
 	if (!m_pFtpConnection->PutFile(source, dest)){
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
@@ -412,7 +412,7 @@ void CDFSClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;
 	bSend = TRUE;
-	theApp.m_pFTPLog->Info2(_T("====================FTP connection Close========================="));
+	theApp.m_pFTPLog->LOG_INFO2(_T("====================FTP connection Close========================="));
 	// close FTP connection
 }
 
@@ -595,7 +595,7 @@ void CDFSClient::Disconnect()
 void CDFSClient::DfsAddTransferFile(DfsDataValue strTransferFile)
 {
 	if (strTransferFile.m_PanelID.IsEmpty())
-		theApp.m_pFTPLog->Info(_T("Sum Dfs PanelID Error"));
+		theApp.m_pFTPLog->LOG_INFO(_T("Sum Dfs PanelID Error"));
 
 	m_csDfsUploadLock.Lock();
 	m_DfsUploadtransferFileList.push(strTransferFile);
@@ -704,7 +704,7 @@ void CDFSClient::RunDfsUploadThread()
 				dfsData = m_DfsUploadtransferFileList.front();
 				strPanelID = dfsData.m_PanelID;
 				strFpcID = dfsData.m_FpcID;
-				theApp.m_pFTPLog->Debug(_T("Sum DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
+				theApp.m_pFTPLog->LOG_DEBUG(_T("Sum DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
 			//	m_csDfsUploadLock.Unlock();
 #if _SYSTEM_AMTAFT_
 				if (strPanelID.IsEmpty() == FALSE)
@@ -715,7 +715,9 @@ void CDFSClient::RunDfsUploadThread()
 					strOpvFilPath = DFS_SHARE_OPVDFS_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\") + strPanelID + _T(".csv");
 
 					strTemp1 = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\SUM\\");
+					theApp.m_pFTPLog->LOG_INFO(_T("[SUM] Creating SUM folder: %s, PanelID: %s"), strTemp1, strPanelID);
 					CreateFolders(strTemp1);
+					theApp.m_pFTPLog->LOG_INFO(_T("[SUM] SUM folder created successfully"));
 
 					strSumImagePath = strTemp1 + _T("Image");
 					CreateFolders(strSumImagePath);
@@ -728,103 +730,215 @@ void CDFSClient::RunDfsUploadThread()
 					CreateFolders(strAoiImagePath);
 					if (GetDBInterface().IsConnected())
 					{
-						// 按 ScreenID 查询最新的检测结果
+						// 按 ScreenID 查询最新的检测结果（IVS_LCD_InspectionResult.ScreenID = PanelID/条码）
 						CInspectionResultList results;
-						if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
+						theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] start PanelID=%s Dest=%s Root=%s"),
+							(LPCTSTR)strPanelID, (LPCTSTR)strAoiImagePath, (LPCTSTR)DEFAULT_MAIN_AOI_IMAGE_ROOT);
+						BOOL bBarcodeOk = GetDBInterface().QueryByBarcode(strPanelID, results);
+						if (!bBarcodeOk)
+						{
+							theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] QueryByBarcode failed PanelID=%s err=%s"),
+								(LPCTSTR)strPanelID, (LPCTSTR)GetDBInterface().GetLastError());
+						}
+						else if (results.empty())
+						{
+							theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] QueryByBarcode empty (no row for ScreenID=%s)"),
+								(LPCTSTR)strPanelID);
+						}
+						else
 						{
 							// 取最新的检测结果
 							CInspectionResult& inspResult = results.front();
+							theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] QueryByBarcode OK GUID=%s ScreenID=%s"),
+								(LPCTSTR)inspResult.GUID, (LPCTSTR)inspResult.ScreenID);
 							CDefectInfoList defectList;
-							if (GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
+							if (!GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
 							{
+								theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] QueryDefectsByParentGUID failed GUID=%s err=%s"),
+									(LPCTSTR)inspResult.GUID, (LPCTSTR)GetDBInterface().GetLastError());
+							}
+							else
+							{
+								int nCopyOk = 0, nCopyMissing = 0, nEmptyPath = 0;
+								theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] QueryDefectsByParentGUID OK count=%d GUID=%s"),
+									(int)defectList.size(), (LPCTSTR)inspResult.GUID);
 								for (const auto& defect : defectList)
 								{
-								if (!defect.ImagePath.IsEmpty())
-								{
+									if (defect.ImagePath.IsEmpty())
+									{
+										nEmptyPath++;
+										continue;
+									}
 									// ImagePath 可能是相对路径或绝对路径
-									// 如果是相对路径，需要拼接根目录；如果是绝对路径直接使用
 									CString strSrcImagePath;
-									// 如果 ImagePath 已经是绝对路径（包含盘符如 D:\），直接使用
-									if (defect.ImagePath.GetLength() >= 3 && 
+									if (defect.ImagePath.GetLength() >= 3 &&
 										defect.ImagePath.Mid(1) == _T(":\\"))
 									{
 										strSrcImagePath = defect.ImagePath;
 									}
 									else
 									{
-										// 相对路径，拼接 MainAOI 根目录
 										strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
 									}
-										CString strFileName = strSrcImagePath;
-										int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
-										if (nLastSlash >= 0)
-											strFileName = strSrcImagePath.Mid(nLastSlash + 1);
-										CString strDestImagePath = strAoiImagePath + _T("\\") + strFileName;
+									CString strFileName = strSrcImagePath;
+									int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
+									if (nLastSlash >= 0)
+										strFileName = strSrcImagePath.Mid(nLastSlash + 1);
+									CString strDestImagePath = strAoiImagePath + _T("\\") + strFileName;
 
-										if (FileExists(strSrcImagePath))
+									if (FileExists(strSrcImagePath))
+									{
+										if (::CopyFile(strSrcImagePath, strDestImagePath, FALSE))
 										{
-											::CopyFile(strSrcImagePath, strDestImagePath, FALSE);
-											theApp.m_pFTPLog->Debug(_T("CopyImageByPath: %s -> AOI\\Image"), strSrcImagePath);
+											nCopyOk++;
+											theApp.m_pFTPLog->LOG_DEBUG(_T("[AOI Image Copy] copied: %s"), (LPCTSTR)strSrcImagePath);
 										}
 										else
 										{
-											theApp.m_pFTPLog->Info(_T("ImagePath file not found: %s"), strSrcImagePath);
+											nCopyMissing++;
+											theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] CopyFile FAILED: %s -> %s"), (LPCTSTR)strSrcImagePath, (LPCTSTR)strDestImagePath);
 										}
 									}
-								}
-							}
-
-							// ===== 复制 AOI 目录下的特殊图片（L*.bmp 和 MarkImg.jpg） =====
-							// 获取第一个缺陷的 ImagePath，提取 PanelID 目录路径
-							CString strAoiImageDir;
-							for (const auto& defect : defectList)
-							{
-								if (!defect.ImagePath.IsEmpty())
-								{
-									CString strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
-									int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
-									if (nLastSlash >= 0)
+									else
 									{
-										strAoiImageDir = strSrcImagePath.Left(nLastSlash);  // PanelID 目录
-									}
-									break;
-								}
-							}
-
-							if (!strAoiImageDir.IsEmpty())
-							{
-								// 复制 L*.bmp (等级标记图)
-								CFileFind fileFind;
-								CString strSearchPattern = strAoiImageDir + _T("\\L*.bmp");
-								BOOL bFind = fileFind.FindFile(strSearchPattern);
-								while (bFind)
-								{
-									bFind = fileFind.FindNextFile();
-									if (!fileFind.IsDots() && !fileFind.IsDirectory())
-									{
-										CString strSrcFile = fileFind.GetFilePath();
-										CString strDestFile = strAoiImagePath + _T("\\") + fileFind.GetFileName();
-										::CopyFile(strSrcFile, strDestFile, FALSE);
-										theApp.m_pFTPLog->Debug(_T("CopyGradeImage: %s -> AOI\\Image"), strSrcFile);
+										nCopyMissing++;
+										theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] file not found: %s"), (LPCTSTR)strSrcImagePath);
 									}
 								}
-								fileFind.Close();
 
-								// 复制 MarkImg.jpg (Mark 标记图)
-								CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
-								CString strMarkDest = strAoiImagePath + _T("\\MarkImg.jpg");
-								if (FileExists(strMarkSrc))
+								// ===== 复制 AOI 目录下的特殊图片（L*.bmp 和 MarkImg.jpg） =====
+								// 无论缺陷 ImagePath 是否存在，都尝试从 PanelID 对应目录拷贝
+								CString strAoiImageDir;
+								BOOL bFoundAoiDir = FALSE;
+
+								// 优先从已有缺陷的 ImagePath 提取目录
+								for (const auto& defect : defectList)
 								{
-									::CopyFile(strMarkSrc, strMarkDest, FALSE);
-									theApp.m_pFTPLog->Debug(_T("CopyMarkImage: %s -> AOI\\Image"), strMarkSrc);
+									if (!defect.ImagePath.IsEmpty())
+									{
+										CString strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
+										int nLastSlash2 = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
+										if (nLastSlash2 >= 0)
+											strAoiImageDir = strSrcImagePath.Left(nLastSlash2);
+										bFoundAoiDir = TRUE;
+										break;
+									}
 								}
+
+								// 如果没有缺陷或缺陷都没有 ImagePath，则直接搜索 D:\MEMS_DFS_Data\MainAOI\ 下所有子目录
+								if (!bFoundAoiDir)
+								{
+									theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] no defect ImagePath, searching MainAOI subdirs for PanelID=%s"), (LPCTSTR)strPanelID);
+									CFileFind fileFindMainAOI;
+									CString strMainAOIPattern = CString(DEFAULT_MAIN_AOI_IMAGE_ROOT) + _T("MainAOI\\*");
+									BOOL bMainFind = fileFindMainAOI.FindFile(strMainAOIPattern);
+									while (bMainFind && !bFoundAoiDir)
+									{
+										bMainFind = fileFindMainAOI.FindNextFile();
+										if (fileFindMainAOI.IsDots() || !fileFindMainAOI.IsDirectory())
+											continue;
+										// 遍历 <IP>-<Port> 目录
+										CString strIpPortDir = fileFindMainAOI.GetFilePath();
+										CFileFind fileFindIndex;
+										CString strIndexPattern = strIpPortDir + _T("\\*");
+										BOOL bIndexFind = fileFindIndex.FindFile(strIndexPattern);
+										while (bIndexFind && !bFoundAoiDir)
+										{
+											bIndexFind = fileFindIndex.FindNextFile();
+											if (fileFindIndex.IsDots() || !fileFindIndex.IsDirectory())
+												continue;
+											// 遍历 <Index> 目录
+											CString strIndexDir = fileFindIndex.GetFilePath();
+											CFileFind fileFindDate;
+											CString strDatePattern = strIndexDir + _T("\\*");
+											BOOL bDateFind = fileFindDate.FindFile(strDatePattern);
+											while (bDateFind && !bFoundAoiDir)
+											{
+												bDateFind = fileFindDate.FindNextFile();
+												if (fileFindDate.IsDots() || !fileFindDate.IsDirectory())
+													continue;
+												// 遍历 <Date> 目录
+												CString strDateDir = fileFindDate.GetFilePath();
+												CFileFind fileFindPanel;
+												CString strPanelPattern = strDateDir + _T("\\*");
+												BOOL bPanelFind = fileFindPanel.FindFile(strPanelPattern);
+												while (bPanelFind && !bFoundAoiDir)
+												{
+													bPanelFind = fileFindPanel.FindNextFile();
+													if (fileFindPanel.IsDots())
+														continue;
+													// 检查 PanelID 目录名（可能是 PanelID 本身或其前缀）
+													CString strFoundPanelDir = fileFindPanel.GetFilePath();
+													CString strFoundDirName = fileFindPanel.GetFileName();
+													if (fileFindPanel.IsDirectory() &&
+														(strFoundDirName == strPanelID || strFoundDirName.Find(strPanelID) == 0))
+													{
+														strAoiImageDir = strFoundPanelDir;
+														bFoundAoiDir = TRUE;
+														theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] found AoiImageDir by search: %s"), (LPCTSTR)strAoiImageDir);
+													}
+												}
+												fileFindPanel.Close();
+											}
+											fileFindDate.Close();
+										}
+										fileFindIndex.Close();
+									}
+									fileFindMainAOI.Close();
+								}
+
+								if (!strAoiImageDir.IsEmpty())
+								{
+									theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] grade/mark dir=%s"), (LPCTSTR)strAoiImageDir);
+									CFileFind fileFind;
+									CString strSearchPattern = strAoiImageDir + _T("\\L*.bmp");
+									BOOL bFind = fileFind.FindFile(strSearchPattern);
+									while (bFind)
+									{
+										bFind = fileFind.FindNextFile();
+										if (!fileFind.IsDots() && !fileFind.IsDirectory())
+										{
+											CString strSrcFile = fileFind.GetFilePath();
+											CString strDestFile = strAoiImagePath + _T("\\") + fileFind.GetFileName();
+											if (::CopyFile(strSrcFile, strDestFile, FALSE))
+											{
+												theApp.m_pFTPLog->LOG_DEBUG(_T("[AOI Image Copy] L*.bmp copied OK: %s"), (LPCTSTR)strSrcFile);
+											}
+											else
+											{
+												theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] L*.bmp CopyFile FAILED: %s -> %s"), (LPCTSTR)strSrcFile, (LPCTSTR)strDestFile);
+											}
+										}
+									}
+									fileFind.Close();
+
+									CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+									CString strMarkDest = strAoiImagePath + _T("\\MarkImg.jpg");
+									if (FileExists(strMarkSrc))
+									{
+										if (::CopyFile(strMarkSrc, strMarkDest, FALSE))
+										{
+											theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] MarkImg copied OK: %s"), (LPCTSTR)strMarkSrc);
+										}
+										else
+										{
+											theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] MarkImg CopyFile FAILED: %s -> %s"), (LPCTSTR)strMarkSrc, (LPCTSTR)strMarkDest);
+										}
+									}
+									else
+										theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] MarkImg not found: %s"), (LPCTSTR)strMarkSrc);
+								}
+								else
+									theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] AoiImageDir still empty after search, skip L*.bmp/MarkImg"));
+
+								theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] done PanelID=%s ok=%d missing=%d emptyPath=%d"),
+									(LPCTSTR)strPanelID, nCopyOk, nCopyMissing, nEmptyPath);
 							}
-							// ===== 复制特殊图片结束 =====
 						}
-						else
-						{
-							theApp.m_pFTPLog->Info(_T("QueryByBarcode failed for PanelID: %s"), strPanelID);
-						}
+					}
+					else
+					{
+						theApp.m_pFTPLog->LOG_INFO(_T("[AOI Image Copy] DB not connected, skip"));
 					}
 					// ===== 按 ImagePath 复制结束 =====
 
@@ -865,7 +979,7 @@ void CDFSClient::RunDfsUploadThread()
 					//DfsInfo.m_EQPDataInfo.strAOI_RECIPE_NAME = dfsData.m_ModelID;
 					//DfsInfo.m_EQPDataInfo.strPG_RECIPE_NAME = result.m_ChNum;
 					//DfsInfo.m_EQPDataInfo.strTP_RECIPE_NAME = CStringSupport::FormatString(_T("%d"), dfsData.m_StageNum);
-					theApp.m_pDataStatusLog->Info(CStringSupport::FormatString(_T(" GetEQPDataInfo()_DFS Start time dfsData.m_StartTime : %s"), dfsData.m_StartTime));
+					theApp.m_pDataStatusLog->LOG_INFO(CStringSupport::FormatString(_T(" GetEQPDataInfo()_DFS Start time dfsData.m_StartTime : %s"), dfsData.m_StartTime));
 					DfsInfo.m_EQPDataInfo.strSTART_TIME = dfsData.m_StartTime;
 					DfsInfo.m_EQPDataInfo.strEND_TIME = dfsData.m_EndTime;
 					DfsInfo.m_EQPDataInfo.strLOAD_STAGE_NO = dfsData.m_LoadeHandlerNUM;
@@ -895,11 +1009,12 @@ void CDFSClient::RunDfsUploadThread()
 					//<<
 
 					DfsInfo.AMTAFTSavePanelDFS_SUM(result, strPanelID, strFpcID, strAOIPath, strViewingPath, strLumitopPath, strOpvFilPath, strSumPath);
+					theApp.m_pFTPLog->LOG_INFO(_T("[SUM] AMTAFTSavePanelDFS_SUM called, strSumPath: %s"), strSumPath);
 
 					BOOL bTransfer = TRUE;
 
 					if (!FileExists(strSumPath)){
-						theApp.m_pFTPLog->Info2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
+						theApp.m_pFTPLog->LOG_INFO2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
 					}
 					else
 					{
@@ -967,7 +1082,7 @@ void CDFSClient::RunDfsUploadThread()
 							m_vecIndexValue.push_back(strCsvFilePath);
 
 							if (!DfsInfo.VisionLoadPanelDFSInfo(strPanelID, Machine_ULD))
-								theApp.m_pFTPLog->Info(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
+								theApp.m_pFTPLog->LOG_INFO(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
 
 							for (int i = 0; i < DfsInfo.m_OpvDataList[Machine_ULD].size() && bTransfer; i++)
 							{
@@ -989,7 +1104,7 @@ void CDFSClient::RunDfsUploadThread()
 									m_vecIndexValue.push_back(strDest);
 								}
 								else
-									theApp.m_pFTPLog->Info2(_T("Vision Not exist image file"));
+									theApp.m_pFTPLog->LOG_INFO2(_T("Vision Not exist image file"));
 							}
 
 							//전체Image File Name 항상 통일
@@ -1022,7 +1137,7 @@ void CDFSClient::RunDfsUploadThread()
 								m_vecIndexValue.push_back(strDest2);
 							}
 							else
-								theApp.m_pFTPLog->Info2(_T("Not exist image file"));
+								theApp.m_pFTPLog->LOG_INFO2(_T("Not exist image file"));
 
 							DfsIDXFileCreate(strUploadEQPID, &strIndexFile);
 							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + strUploadEQPID + _T(".csv");
@@ -1048,7 +1163,7 @@ void CDFSClient::RunDfsUploadThread()
 						}
 						else
 						{
-							theApp.m_pFTPLog->Info2(_T("Panel ID length is short."));
+							theApp.m_pFTPLog->LOG_INFO2(_T("Panel ID length is short."));
 						}
 
 					}
@@ -1083,7 +1198,7 @@ void CDFSClient::RunDfsUploadThread()
 					BOOL bTransfer = TRUE;
 				
 					if (!FileExists(strSumPath)){
-						theApp.m_pFTPLog->Info2(CStringSupport::FormatString(_T("[%s][%s] Inspect Not exist csv File"), strPanelID, strFpcID));
+						theApp.m_pFTPLog->LOG_INFO2(CStringSupport::FormatString(_T("[%s][%s] Inspect Not exist csv File"), strPanelID, strFpcID));
 					}
 					else
 					{
@@ -1139,7 +1254,7 @@ void CDFSClient::RunDfsUploadThread()
 							::CopyFile(strIndexFile, strDest, FALSE);			//index파일 업로드
 						}
 						else
-							theApp.m_pFTPLog->Info2(_T("Panel ID length is short."));
+							theApp.m_pFTPLog->LOG_INFO2(_T("Panel ID length is short."));
 					}
 				}
 				Delay(10, TRUE);
@@ -1157,7 +1272,7 @@ void CDFSClient::RunDfsUploadThread()
 void CDFSClient::AddTransferFile(DfsDataValue strTransferFile)
 {
 	if (strTransferFile.m_PanelID.IsEmpty())
-		theApp.m_pFTPLog->Info(_T("PanelID Error"));
+		theApp.m_pFTPLog->LOG_INFO(_T("PanelID Error"));
 
 	m_csLock.Lock();
 	m_transferFileList.push(strTransferFile);
@@ -1191,14 +1306,14 @@ void CDFSClient::RunFtpUploadThread()
 				dfsData = m_transferFileList.front();
 				strPanelID = dfsData.m_PanelID;
 				strFpcID = dfsData.m_FpcID;
-				theApp.m_pFTPLog->Debug(_T("DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
+				theApp.m_pFTPLog->LOG_DEBUG(_T("DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
 				m_csLock.Unlock();
 
 				if (strPanelID.IsEmpty() == FALSE)
 				{
 					DfsInfo.IndexZoneInspResultInfo(strPanelID);
 					if (!DfsInfo.VisionLoadPanelDFSInfo(strPanelID, Machine_AOI)) // 이건 OPV .txt 파일 용입니다.
-						theApp.m_pFTPLog->Info(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
+						theApp.m_pFTPLog->LOG_INFO(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
 
 					if (theApp.m_bSameDefectMode == TRUE)
 					{
@@ -1373,12 +1488,6 @@ BOOL CDFSClient::CheckSameAOIDefect(CString strChNum, VisionSameDefect defectLis
 	CStringArray responseTokens;
 	CStringSupport::GetTokenArray(strKey, _T('^'), responseTokens);
 
-	if (responseTokens.GetSize() < 2)
-	{
-		theApp.m_pFTPLog->Warn(_T("[SameDefectCheck] strKey=%s TokenCount=%d 不足2个，跳过"),
-			strKey, responseTokens.GetSize());
-		return FALSE;
-	}
 	strCh = responseTokens[0];
 	strCode = responseTokens[1];
 
@@ -1402,7 +1511,7 @@ BOOL CDFSClient::CheckSameAOIDefect(CString strChNum, VisionSameDefect defectLis
 						CString strMsg = CStringSupport::FormatString(_T("Panel [%s][%s] Same NG Over %s Count, DefectCode : %s, ChNum : %s"),
 							iter->second.m_strPanelID, iter->second.m_strFpcID, theApp.m_strSameDefectAlarmMaxCount, iter->second.m_strDefectCode, iter->second.m_strChNum);
 
-						theApp.m_pTraceLog->Debug(strMsg);
+						theApp.m_pTraceLog->LOG_DEBUG(strMsg);
 
 						theApp.m_pMsgBoxAlarm->WaitShowHide(SW_SHOW, strMsg);
 						//theApp.getMsgBox(MS_OK, strMsg, strMsg, strMsg);
@@ -1423,7 +1532,7 @@ BOOL CDFSClient::CheckSameAOIDefect(CString strChNum, VisionSameDefect defectLis
 					{
 						CString strMsg = CStringSupport::FormatString(_T("Panel [%s][%s] Same NG Over %s Count, DefectCode : %s"),
 							iter->second.m_strPanelID, iter->second.m_strFpcID, theApp.m_strSameDefectAlarmMaxCount, iter->second.m_strDefectCode);
-						theApp.m_pTraceLog->Debug(strMsg);
+						theApp.m_pTraceLog->LOG_DEBUG(strMsg);
 						theApp.m_pMsgBoxAlarm->WaitShowHide(SW_SHOW, strMsg);
 						//theApp.getMsgBox(MS_OK, strMsg, strMsg, strMsg);
 						m_mapSameDefect.clear();

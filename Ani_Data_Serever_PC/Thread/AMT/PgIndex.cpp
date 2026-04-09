@@ -9,7 +9,16 @@
 CPgIndex::CPgIndex(int iZoneNum)
 {
 	m_hQuit = CreateEvent(NULL, TRUE, FALSE, NULL);
-	m_iIndexNum = theApp.m_indexList[iZoneNum].m_indexNum;
+	// 边界检查：m_indexList 大小为 4（ABCZone 各占 4 个区域）
+	if (iZoneNum < 0 || iZoneNum >= theApp.m_indexList.size())
+	{
+		theApp.m_PlcLog->Error(_T("[CPgIndex] iZoneNum=%d 越界 (m_indexList.size()=%d)"), iZoneNum, theApp.m_indexList.size());
+		m_iIndexNum = 0;
+	}
+	else
+	{
+		m_iIndexNum = theApp.m_indexList[iZoneNum].m_indexNum;
+	}
 	m_iZoneNum = iZoneNum;
 	m_iPanelNameAddr = iZoneNum * 4;
 
@@ -102,9 +111,9 @@ void CPgIndex::ThreadRun()
 			if (bPlcSend != s_bLastContactPlcSend)
 			{
 				if (bPlcSend)
-					theApp.m_PlcLog->LOG_INFO(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+					theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
 				else
-					theApp.m_PlcLog->LOG_INFO(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
+					theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
 				s_bLastContactPlcSend = bPlcSend;
 			}
 
@@ -126,9 +135,9 @@ void CPgIndex::ThreadRun()
 				if (bTouchPlcSend != s_bLastTouchPlcSend)
 				{
 					if (bTouchPlcSend)
-						theApp.m_PlcLog->LOG_INFO(_T("[%s] Touch PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+						theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
 					else
-						theApp.m_PlcLog->LOG_INFO(_T("[%s] Touch PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
+						theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
 					s_bLastTouchPlcSend = bTouchPlcSend;
 				}
 
@@ -323,7 +332,7 @@ void CPgIndex::ThreadRun()
 
 							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_PreGammaEnd1, InspResult.m_iPanelNum, TRUE);
 							theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Panel [%s] Pre Gamma Time Out"), InspResult.m_strZoneName, InspResult.m_iIndexPanelNum, InspResult.m_cellId));
-							theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] Pre Gamma [%s] Time out"), InspResult.m_strZoneName, InspResult.m_cellId));
+							theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("[%s] Pre Gamma [%s] Time out"), InspResult.m_strZoneName, InspResult.m_cellId));
 
 							theApp.m_PgSocketManager[PgServer_1].SendPGMessage(CStringSupport::FormatString(_T("Ch,%d,PTRN,3"), InspResult.m_iIndexPanelNum), InspResult.m_iIndexPanelNum);
 							break;
@@ -335,7 +344,7 @@ void CPgIndex::ThreadRun()
 
 							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactOnEnd + m_iZoneNum, InspResult.m_iPanelNum, TRUE);
 							theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Panel [%s] Contact On Time Out"), m_strIndexName, InspResult.m_iIndexPanelNum, InspResult.m_cellId));
-							theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] Contact On [%s] Time out"), m_strIndexName, InspResult.m_cellId));
+							theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("[%s] Contact On [%s] Time out"), m_strIndexName, InspResult.m_cellId));
 							//>> 210301 yjlim
 							theApp.m_pRankTread->AddRankCodeList(InspResult.m_cellId, InspResult.m_FpcID, InspResult.m_iPanelNum, InspResult.m_iCurIndex, RankContact);
 							//<<
@@ -348,7 +357,7 @@ void CPgIndex::ThreadRun()
 
 							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactOffEnd + m_iZoneNum, InspResult.m_iPanelNum, TRUE);
 							theApp.m_PgSocketManager[PgServer_1].PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact Off Time Out"), m_strIndexName, InspResult.m_iIndexPanelNum));
-							theApp.m_TimeOutLog->LOG_INFO(CStringSupport::FormatString(_T("[%s] Contact Off [%s] Time out"), m_strIndexName, InspResult.m_cellId));
+							theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("[%s] Contact Off [%s] Time out"), m_strIndexName, InspResult.m_cellId));
 							break;
 						/*case PG_PATTERN_NEXT:
 							theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZonePatternNextEnd + m_iZoneNum, IndexZone, TRUE);
@@ -620,6 +629,12 @@ void CPgIndex::ZonePreGamma(int Num)
 	CString strPanel = _T(""), strFpcID = _T("");
 	theApp.IndexCheck();
 	int indexNum = (theApp.m_CurrentIndexZone + (MaxZone - DZone)) % 4;
+	// 边界检查：m_indexList 大小为 4（ABCZone 各占 4 个区域）
+	if (indexNum < 0 || indexNum >= theApp.m_indexList.size())
+	{
+		theApp.m_PlcLog->Error(_T("[ZonePreGamma] indexNum=%d 越界 (m_indexList.size()=%d)"), indexNum, theApp.m_indexList.size());
+		indexNum = 0;
+	}
 	int iChNum = theApp.m_indexList[indexNum].m_indexNum + Num;
 	
 	theApp.m_pEqIf->m_pMNetH->GetPanelData(eWordType_PreGammaPanel1 + Num, &pPanelData);
@@ -813,7 +828,7 @@ void CPgIndex::CloseTask()
 			Delay(100, TRUE);
 			if (::WaitForSingleObject(m_pPgIndex->m_hThread, 1000) == WAIT_TIMEOUT) {
 				::TerminateThread(m_pPgIndex->m_hThread, 1L);
-				theApp.m_PgLog->LOG_INFO(_T("Terminate IndexZone Thread"));
+				theApp.m_PgLog->Info(_T("Terminate IndexZone Thread"));
 			}
 		}
 		delete m_pPgIndex;
