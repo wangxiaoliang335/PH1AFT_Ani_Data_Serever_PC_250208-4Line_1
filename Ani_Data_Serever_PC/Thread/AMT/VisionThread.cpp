@@ -714,7 +714,8 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation, const BOOL startFlagsC
 
 	// 发送 ICW Start$ 消息
 	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Sending message: %s"), strStartMsg), 0);
-	theApp.m_ICWCommManager.SendMessage(strStartMsg);
+	BOOL bSendRet = theApp.m_ICWCommManager.SendMessage(strStartMsg);
+	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] SendMessage return: %d"), bSendRet), 0);
 	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] ========== SendICWStartMessage 完成 ==========")), 0);
 #endif
 }
@@ -782,13 +783,26 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum, const BOOL sta
 
 	// 发送开始检测前更新 ivs_lcd_idmap，供检测软件使用；UniqueID 保证不重复
 	CString strMarkID;
-	strMarkID.Format(_T("%02d"), panelNum + 1);   // 治具号 01~04
-	CString strUniqueID = GetDBInterface().GenerateUniqueIDForJig(panelNum);
-	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Generate UniqueID for Jig %d, UniqueID=%s"), panelNum + 1, strUniqueID), 0);
+	strMarkID.Format(_T("%02d"), indexPanelNum);   // 工位号（治具号）
+	CString strUniqueID = GetDBInterface().GenerateUniqueIDForJig(indexPanelNum);
+	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] Generate UniqueID for Jig %d, UniqueID=%s"), indexPanelNum, strUniqueID), 0);
 	if (GetDBInterface().IsConnected())
 	{
+		// 在第一个治具开始前清空表（旧批次数据），避免 AOI 检测软件读到残留数据
+		if (panelNum == 0)
+		{
+			if (GetDBInterface().ClearIDMapTable())
+				LogWrite(_T("[UpsertIDMap] Clear IVS_LCD_IDMap table before new batch"), panelNum);
+			else
+				LogWrite(CStringSupport::FormatString(_T("[UpsertIDMap] Clear IVS_LCD_IDMap failed: %s"), GetDBInterface().GetLastError()), panelNum);
+		}
+
+		LogWrite(CStringSupport::FormatString(_T("[UpsertIDMap] MarkID=%s, PosID=%d, UniqueID=%s, Barcode=%s, MainAoiFixID=%s"), 
+			(LPCTSTR)strMarkID, panelNum, (LPCTSTR)strUniqueID, (LPCTSTR)strPanel, (LPCTSTR)strMarkID), panelNum);
 		if (!GetDBInterface().UpsertIDMapBeforeStart(strMarkID, panelNum, strUniqueID, strPanel, strMarkID))
 			LogWrite(CStringSupport::FormatString(_T("Panel %d UpsertIDMap failed: %s"), panelNum, GetDBInterface().GetLastError()), Num);
+		else
+			LogWrite(CStringSupport::FormatString(_T("[UpsertIDMap] Success - Panel %d"), panelNum), panelNum);
 	}
 
 #if _SYSTEM_AMTAFT_
@@ -1252,6 +1266,7 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 {
 	theApp.m_bVisionDeleteFlag = FALSE;
 	LogWrite(CStringSupport::FormatString(_T("[ICW] OnICWFinishFN: %d slots"), (int)finishInfo.Results.size()), 0);
+	LogWrite(CStringSupport::FormatString(_T("[ICW FN$] RawMessage: [%s]"), (LPCTSTR)finishInfo.RawMessage), 0);
 	LogWrite(_T("[ICW FN$] ========== FN$ 处理开始 =========="), 0);
 	LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Received %d slot results"), (int)finishInfo.Results.size()), 0);
 
@@ -1273,10 +1288,11 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] ========== Process Fixture %d =========="), nFixtureNo), nFixtureNo - 1);
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Light inspection result=%d"), nFixtureNo, nResult), nFixtureNo - 1);
 
-		// Step 1: 查询 ivs_lcd_idmap（MainAoiFixID → UniqueID/Barcode）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step1 - Query ivs_lcd_idmap (MainAoiFixID=%d)"), nFixtureNo, nFixtureNo), nFixtureNo - 1);
+		// Step 1: 查询 ivs_lcd_idmap（使用 ICW 返回的工位号 nResult 查询）
+		// 注意：nResult 是工位号（如 10, 11, 12），与写入时的 MarkID 对应
+		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step1 - Query ivs_lcd_idmap (Station=%d)"), nFixtureNo, nResult), nFixtureNo - 1);
 		CIDMapInfo idMapInfo;
-		if (!GetDBInterface().QueryIDMapByFixtureNo(nFixtureNo, idMapInfo))
+		if (!GetDBInterface().QueryIDMapByFixtureNo(nResult, idMapInfo))
 		{
 			LogWrite(CStringSupport::FormatString(
 				_T("[ICW] QueryIDMapByFixtureNo failed for fixture %d: %s"),
@@ -1516,10 +1532,10 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			DfsDataValue dfsData;
 			dfsData.Reset();
 			dfsData.m_TypeNum = 4;  // 设备类型：4=点灯/Lumitop 设备
-			dfsData.m_StageNum = nFixtureNo;  // 工位号 1~4
+			dfsData.m_StageNum = nResult;  // 工位号（如 10, 11, 12）
 			dfsData.m_FpcID = strBarcode;  // 玻璃条码
 			dfsData.m_PanelID = strBarcode;  // 玻璃条码（PanelID = FpcID）
-			dfsData.m_IndexNum.Format(_T("%02d"), nFixtureNo);  // 治具号：01~04
+			dfsData.m_IndexNum.Format(_T("%02d"), nResult);  // 工位号：10, 11, 12...
 			dfsData.m_ChNum.Format(_T("%d"), nFixtureNo - 1);  // 通道号：0~3
 
 			// 点灯结果：OK/NG（根据 VisionResult 判定）
