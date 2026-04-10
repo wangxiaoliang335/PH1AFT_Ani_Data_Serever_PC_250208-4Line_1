@@ -557,17 +557,17 @@ BOOL CDBInterface::ExecuteSQL(const CString& strSQL)
     // Execute SQL using Unicode ODBC function
     ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
 
-    // Free statement handle
-    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-
     if (!SQL_SUCCEEDED(ret))
     {
+        // Must get error info BEFORE freeing the handle!
         m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-        TRACE(_T("DBInterface: SQL Error - %s\nSQL: %s\n"), m_strLastError, strSQL);
-        return FALSE;
+        theApp.m_pTestLog->Info(_T("[DBError] SQL Error - %s | SQL: %s"), m_strLastError, strSQL);
     }
 
-    return TRUE;
+    // Free statement handle after getting error
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+
+    return SQL_SUCCEEDED(ret);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -632,7 +632,9 @@ CString CDBInterface::GenerateUniqueIDForJig(int jigNum)
     SYSTEMTIME st;
     GetLocalTime(&st);
     CString strJig;
-    strJig.Format(_T("%02d"), (jigNum >= 0 && jigNum <= 3) ? (jigNum + 1) : 1);
+    // jigNum 从 0 开始（如 panelNum），但 UniqueID 后缀应为实际工位号（从 1 开始）
+    int nJig = (jigNum >= 0) ? (jigNum + 1) : 1;
+    strJig.Format(_T("%02d"), nJig % 100);  // 取后两位，保证两位数格式
     CString strUniqueID;
     strUniqueID.Format(_T("%04d_%02d_%02d_%02d_%02d_%02d_%03d_%s"),
         st.wYear, st.wMonth, st.wDay,
@@ -672,6 +674,21 @@ BOOL CDBInterface::UpsertIDMapBeforeStart(const CString& markID, int posID, cons
         _T(""));
 
     return ExecuteSQL(strSQL);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Clear all records from IVS_LCD_IDMap table
+// Call this before a new batch of panels starts (e.g., at panelNum==0)
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::ClearIDMapTable()
+{
+    if (!m_bConnected)
+    {
+        m_strLastError = _T("Not connected to database");
+        return FALSE;
+    }
+
+    return ExecuteSQL(_T("DELETE FROM IVS_LCD_IDMap"));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1341,19 +1358,19 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Query IVS_LCD_IDMap by MainAoiFixID (jig number 1~4) to get UniqueID/ScreenID
+// Query IVS_LCD_IDMap by MarkID (jig/station number) to get UniqueID/ScreenID
 ///////////////////////////////////////////////////////////////////////////////
 BOOL CDBInterface::QueryIDMapByFixtureNo(int nFixtureNo, CIDMapInfo& idMapInfo)
 {
-    if (nFixtureNo < 1 || nFixtureNo > 4)
+    if (nFixtureNo < 1)
     {
-        m_strLastError.Format(_T("Invalid fixture number: %d, expected 1~4"), nFixtureNo);
+        m_strLastError.Format(_T("Invalid fixture number: %d, expected >= 1"), nFixtureNo);
         return FALSE;
     }
 
-    // Format MarkID as '01', '02', '03', '04'
+    // Format MarkID as two-digit string (e.g., 1->'01', 7->'07', 12->'12')
     CString strMarkID;
-    strMarkID.Format(_T("%02d"), nFixtureNo);
+    strMarkID.Format(_T("%02d"), nFixtureNo % 100);
 
     CString strSQL;
     strSQL.Format(
@@ -1368,7 +1385,7 @@ BOOL CDBInterface::QueryIDMapByFixtureNo(int nFixtureNo, CIDMapInfo& idMapInfo)
     if (ret == SQL_NO_DATA)
     {
         SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-        m_strLastError.Format(_T("No record found for MainAoiFixID: %d"), nFixtureNo);
+        m_strLastError.Format(_T("No record found for MarkID: %s"), (LPCTSTR)strMarkID);
         return FALSE;
     }
 

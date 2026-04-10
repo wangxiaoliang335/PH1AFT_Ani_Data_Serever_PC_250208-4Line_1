@@ -141,6 +141,9 @@ public:
     BOOL UpsertIDMapBeforeStart(const CString& markID, int posID, const CString& uniqueID,
                                 const CString& barcode, const CString& mainAoiFixID);
 
+    // Clear all records from IVS_LCD_IDMap table (call before new batch starts)
+    BOOL ClearIDMapTable();
+
     // UPDATE IVS_LCD_IDMap based on Start$ prefix jig pattern (each jig generates new GUID)
     // Example "01020304" updates MainAoiFixID 1~4 for 4 records; "01020000" only updates 1, 2. Used before AUTO_TEST / sending Start$.
     BOOL UpdateIDMapForStartPattern(const CString& strCurrentJigs);
