@@ -4660,11 +4660,15 @@ void CAni_Data_Serever_PCApp::LoadGradeFlow()
 	strPath = strPath + _T("Setrank_") + theApp.m_CurrentModel.m_AlignPcCurrentModelName + _T(".ini");
 	EZIni ini(strPath);
 
+	m_pTestLog->Info(_T("[LoadGradeFlow] INI path: %s"), strPath);
+
 	ini[RankIniTital[GRADEFLOW]].EnumKeyNames(listOfKeyNames);
+	m_pTestLog->Info(_T("[LoadGradeFlow] KeyNames count: %d"), listOfKeyNames.size());
 
 	for (auto list : listOfKeyNames)
 	{
 		strGradeFlowInfo = ini[RankIniTital[GRADEFLOW]][list];
+		m_pTestLog->Info(_T("[LoadGradeFlow] Key[%s] = [%s]"), list, strGradeFlowInfo);
 		if (strGradeFlowInfo.IsEmpty() == FALSE
 			&& strGradeFlowInfo.Find(_T("^")) != -1)
 		{
@@ -4674,9 +4678,11 @@ void CAni_Data_Serever_PCApp::LoadGradeFlow()
 
 			TempFlow.strGrade = responseTokens[0];
 			TempFlow.iFlow = _ttoi(responseTokens[1]);
+			m_pTestLog->Info(_T("[LoadGradeFlow] Parsed -> strGrade: [%s], iFlow: %d"), TempFlow.strGrade, TempFlow.iFlow);
 			m_VecGradeFlow.push_back(TempFlow);
 		}
 	}
+	m_pTestLog->Info(_T("[LoadGradeFlow] Total m_VecGradeFlow size: %d"), m_VecGradeFlow.size());
 }
 
 

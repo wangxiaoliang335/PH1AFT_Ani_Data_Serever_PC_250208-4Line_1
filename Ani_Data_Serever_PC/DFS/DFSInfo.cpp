@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "DFSInfo.h"
 #include "Ani_Data_Serever_PC.h"
 
@@ -1686,6 +1686,7 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 	strTempFilePath2 += _T("\\Image");
 	CreateFolders(strTempFilePath2);
 
+	theApp.m_pFTPLog->Info(_T("[DFS] CopyImage Start: src=%s, dest=%s"), strTempFilePath, strTempFilePath2);
 
 	CFileFind aFile;
 	BOOL IsExist = aFile.FindFile(strTempFilePath);
@@ -1703,14 +1704,25 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 				strTempFilePath = aFile.GetFilePath();
 
 				snedFilePath = strTempFilePath2 + _T("\\") + msg;
-				if (!FileExists(strFile))
+				if (!FileExists(strTempFilePath))  // 检查源文件是否存在
 				{
-					//theApp.m_pFTPLog->LOG_INFO2(_T("Not Exist image file."));
-					return FALSE;
+					theApp.m_pFTPLog->Info2(_T("[DFS] CopyImage: Source image file not exist."));
+					IsExist = aFile.FindNextFile();
+					continue;
 				}
 				else
 				{
-					::MoveFile(strTempFilePath, snedFilePath);
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage MoveFile: %s -> %s"), strTempFilePath, snedFilePath);
+					if (FileExists(snedFilePath))
+					{
+						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
+						::DeleteFile(snedFilePath);
+					}
+					if (!::MoveFile(strTempFilePath, snedFilePath))
+					{
+						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage MoveFile FAILED: src=%s, dest=%s, error=%d"), 
+							strTempFilePath, snedFilePath, GetLastError());
+					}
 				}
 			}
 
@@ -1723,24 +1735,35 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 			strTempFilePath = aFile.GetFilePath();
 
 			snedFilePath = strTempFilePath2 + _T("\\") + msg;
-			if (!FileExists(strFile))
+			if (!FileExists(strTempFilePath))  // 检查源文件是否存在
 			{
-				//theApp.m_pFTPLog->LOG_INFO2(_T("Not Exist image file."));
-				return FALSE;
+				theApp.m_pFTPLog->Info2(_T("[DFS] CopyImage: Source image file not exist (last)."));
 			}
 			else
 			{
-				::MoveFile(strTempFilePath, snedFilePath);
+				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage MoveFile (last): %s -> %s"), strTempFilePath, snedFilePath);
+				if (FileExists(snedFilePath))
+				{
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
+					::DeleteFile(snedFilePath);
+				}
+				if (!::MoveFile(strTempFilePath, snedFilePath))
+				{
+					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage MoveFile FAILED (last): src=%s, dest=%s, error=%d"), 
+						strTempFilePath, snedFilePath, GetLastError());
+				}
 			}
 		}
+		theApp.m_pFTPLog->Info(_T("[DFS] CopyImage End SUCCESS"));
 		return TRUE;
 
 	}
 
+	theApp.m_pFTPLog->Info(_T("[DFS] CopyImage End: source folder not found=%s"), strTempFilePath);
 	return FALSE;
 }
 
-BOOL CDFSInfo::CopyImage2(CString strFilePath, CString strSendFilePath)
+	BOOL CDFSInfo::CopyImage2(CString strFilePath, CString strSendFilePath)
 {
 	CString strTempFilePath = strFilePath;
 	GetPathOnly(strTempFilePath);
@@ -1750,6 +1773,7 @@ BOOL CDFSInfo::CopyImage2(CString strFilePath, CString strSendFilePath)
 	GetPathOnly(strTempFilePath2);	
 	CreateFolders(strTempFilePath2);
 
+	theApp.m_pFTPLog->Info(_T("[DFS] CopyImage2 Start: src=%s, dest=%s"), strTempFilePath, strTempFilePath2);
 
 	CFileFind aFile;
 	BOOL IsExist = aFile.FindFile(strTempFilePath);
@@ -1767,14 +1791,25 @@ BOOL CDFSInfo::CopyImage2(CString strFilePath, CString strSendFilePath)
 				strTempFilePath = aFile.GetFilePath();
 
 				snedFilePath = strTempFilePath2 + msg;
-				if (!FileExists(strFile))
+				if (!FileExists(strTempFilePath))  // 检查源文件是否存在
 				{
-					//theApp.m_pFTPLog->LOG_INFO2(_T("Not Exist image file."));
-					return FALSE;
+					theApp.m_pFTPLog->Info2(_T("[DFS] CopyImage2: Source image file not exist."));
+					IsExist = aFile.FindNextFile();
+					continue;
 				}
 				else
 				{
-					::MoveFile(strTempFilePath, snedFilePath);
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 MoveFile: %s -> %s"), strTempFilePath, snedFilePath);
+					if (FileExists(snedFilePath))
+					{
+						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2: dest exists, delete first: %s"), snedFilePath);
+						::DeleteFile(snedFilePath);
+					}
+					if (!::MoveFile(strTempFilePath, snedFilePath))
+					{
+						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 MoveFile FAILED: src=%s, dest=%s, error=%d"), 
+							strTempFilePath, snedFilePath, GetLastError());
+					}
 				}
 			}
 
@@ -1787,20 +1822,31 @@ BOOL CDFSInfo::CopyImage2(CString strFilePath, CString strSendFilePath)
 			strTempFilePath = aFile.GetFilePath();
 
 			snedFilePath = strTempFilePath2 + _T("\\") + msg;
-			if (!FileExists(strFile))
+			if (!FileExists(strTempFilePath))  // 检查源文件是否存在
 			{
-				//theApp.m_pFTPLog->LOG_INFO2(_T("Not Exist image file."));
-				return FALSE;
+				theApp.m_pFTPLog->Info2(_T("[DFS] CopyImage2: Source image file not exist (last)."));
 			}
 			else
 			{
-				::MoveFile(strTempFilePath, snedFilePath);
+				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 MoveFile (last): %s -> %s"), strTempFilePath, snedFilePath);
+				if (FileExists(snedFilePath))
+				{
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2: dest exists, delete first: %s"), snedFilePath);
+					::DeleteFile(snedFilePath);
+				}
+				if (!::MoveFile(strTempFilePath, snedFilePath))
+				{
+					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 MoveFile FAILED (last): src=%s, dest=%s, error=%d"), 
+						strTempFilePath, snedFilePath, GetLastError());
+				}
 			}
 		}
+		theApp.m_pFTPLog->Info(_T("[DFS] CopyImage2 End SUCCESS"));
 		return TRUE;
 
 	}
 
+	theApp.m_pFTPLog->Info(_T("[DFS] CopyImage2 End: source folder not found=%s"), strTempFilePath);
 	return FALSE;
 }
 
@@ -2366,6 +2412,199 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ===="));
 	theApp.m_pTestLog->Info(_T("  文件路径: %s, 缺陷数量: %d"), (LPCTSTR)strAOIPath, (int)defectList.size());
 	TRACE(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ====\n  文件路径: %s\n  缺陷数量: %d\n"), (LPCTSTR)strAOIPath, (int)defectList.size());
+
+	return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// WriteOpvDefectCodeINI
+// 功能：写入 OpvDefectCode INI 文件，格式参考 D:\ANI\OpvDefectCode
+// 路径：D:\ANI\DataServer\Data\OpvDefectCode\{日期}\{PanelID}.ini
+// 格式：
+//   [Function]
+//   Under,XIMXG1,R1=1
+//   UnderKill=1
+//
+//   [Dot]
+//   Under,XPOCPP,R1=2
+//   UnderKill=2
+//
+// 新机器 AOI 检测完成后，OPV 还未复检，所以初始状态：
+//   - Under = AOI 检出的缺陷数（作为初始值）
+//   - OverKill = 0
+//   - UnderKill = 总缺陷数
+// OPV 复检后会更新这些值
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& defectList, int nFixtureNo)
+{
+	if (strPanelID == NULL || _tcslen(strPanelID) == 0)
+	{
+		theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] PanelID 为空，跳过写入"));
+		return FALSE;
+	}
+
+	// 路径：D:\ANI\DataServer\Data\OpvDefectCode\{日期}\{PanelID}.ini
+	// 格式参考老机器：Section = Dot/Line/Mura 等，Key = Under,{Code},{Grade}=数量，Key = UnderKill=总数
+	CString strDate = GetDateString2();  // 格式：2026-04-09
+	CString strDirPath;
+	strDirPath.Format(_T("D:\\ANI\\DataServer\\Data\\OpvDefectCode\\%s"), (LPCTSTR)strDate);
+
+	// 创建目录（如果不存在）
+	if (!PathIsDirectory(strDirPath))
+	{
+		if (!CreateDirectory(strDirPath, NULL))
+		{
+			theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] 创建目录失败: %s"), (LPCTSTR)strDirPath);
+			return FALSE;
+		}
+	}
+
+	CString strFilePath;
+	strFilePath.Format(_T("%s\\%s.ini"), (LPCTSTR)strDirPath, strPanelID);
+
+	TRACE(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s\n"), (LPCTSTR)strFilePath);
+	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s, 缺陷数量: %d"),
+		(LPCTSTR)strFilePath, (int)defectList.size());
+
+	// 使用 EZIni 写入
+	EZIni ini(strFilePath);
+
+	// 按缺陷类型分组统计
+	// Map: 缺陷类型 -> Map<"Code,Grade", 数量>
+	CMapStringToString mapUnderCount;  // Key: "Code,Grade", Value: 数量
+	CMapStringToString mapDefectType;  // Key: "Code,Grade", Value: 缺陷类型(Section)
+	CStringArray arrSections;  // 记录所有缺陷类型(Section)
+
+	for (int i = 0; i < (int)defectList.size(); i++)
+	{
+		const CDefectInfo& defect = defectList[i];
+
+		// 确定缺陷类型 Section（老机器格式：Dot/Line/Mura/Function 等）
+		CString strSection;
+		CString strTypeUpper = defect.Type;
+		strTypeUpper.MakeUpper();
+
+		if (strTypeUpper.Find(_T("LINE")) >= 0)
+			strSection = _T("Line");
+		else if (strTypeUpper.Find(_T("MURA")) >= 0)
+			strSection = _T("Mura");
+		else if (strTypeUpper.Find(_T("DOT")) >= 0)
+			strSection = _T("Dot");
+		else if (strTypeUpper.Find(_T("BLOCK")) >= 0)
+			strSection = _T("Block");
+		else if (strTypeUpper.Find(_T("BM")) >= 0)
+			strSection = _T("BM");
+		else
+			strSection = _T("Function");  // 其他类型默认 Function
+
+		// 获取缺陷码和等级
+		CString strCode = defect.Code_AOI;
+		CString strGrade = defect.Grade_AOI;
+
+		if (strCode.IsEmpty())
+			strCode = _T("UNKNOWN");
+
+		// 构建 Key: "Code,Grade"
+		CString strKey;
+		strKey.Format(_T("%s,%s"), (LPCTSTR)strCode, (LPCTSTR)strGrade);
+
+		// 如果是新的 Section，记录下来
+		BOOL bNewSection = TRUE;
+		for (int j = 0; j < arrSections.GetSize(); j++)
+		{
+			if (arrSections[j] == strSection)
+			{
+				bNewSection = FALSE;
+				break;
+			}
+		}
+		if (bNewSection)
+			arrSections.Add(strSection);
+
+		// 记录 Code,Grade -> Section 的映射
+		mapDefectType.SetAt(strKey, strSection);
+
+		// 统计 Under 数量（初始 Under = AOI 检出数）
+		CString strCount;
+		if (mapUnderCount.Lookup(strKey, strCount))
+		{
+			int nCount = _ttoi(strCount) + 1;
+			strCount.Format(_T("%d"), nCount);
+			mapUnderCount.SetAt(strKey, strCount);
+		}
+		else
+		{
+			mapUnderCount.SetAt(strKey, _T("1"));
+		}
+	}
+
+	// 写入 INI 文件
+	// 按 Section 分组写入，格式参考老机器：
+	//   [Dot]
+	//   Under,XIMXG1,R1=1
+	//   UnderKill=1
+	for (int s = 0; s < arrSections.GetSize(); s++)
+	{
+		CString strSection = arrSections[s];
+		CString strUnderCount;
+		int nTotalUnder = 0;
+
+		// 遍历 mapUnderCount，找到属于当前 Section 的所有缺陷
+		POSITION pos = mapUnderCount.GetStartPosition();
+		while (pos != NULL)
+		{
+			CString strKey, strCount;
+			mapUnderCount.GetNextAssoc(pos, strKey, strCount);
+
+			CString strDefectSection;
+			if (!mapDefectType.Lookup(strKey, strDefectSection))
+				continue;
+
+			if (strDefectSection != strSection)
+				continue;
+
+			// 解析 Code 和 Grade
+			CString strCode, strGrade;
+			int nComma = strKey.Find(',');
+			if (nComma >= 0)
+			{
+				strCode = strKey.Left(nComma);
+				strGrade = strKey.Mid(nComma + 1);
+			}
+			else
+			{
+				strCode = strKey;
+				strGrade = _T("");
+			}
+
+			int nCount = _ttoi(strCount);
+			nTotalUnder += nCount;
+
+			// 写入: Under,{Code},{Grade}={数量}
+			CString strKeyName;
+			strKeyName.Format(_T("Under,%s,%s"), (LPCTSTR)strCode, (LPCTSTR)strGrade);
+			ini[strSection][strKeyName] = nCount;
+
+			TRACE(_T("[WriteOpvDefectCodeINI] [%s] %s=%d\n"),
+				(LPCTSTR)strSection, (LPCTSTR)strKeyName, nCount);
+		}
+
+		// 写入 UnderKill 总数
+		ini[strSection][_T("UnderKill")] = nTotalUnder;
+
+		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] Section [%s] UnderKill=%d"),
+			(LPCTSTR)strSection, nTotalUnder);
+	}
+
+	// 如果没有缺陷，写入 OK 标记（老机器格式）
+	if (defectList.empty())
+	{
+		ini[_T("OK")][_T("Result")] = _T("1");
+		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 无缺陷，写入 OK=1"));
+	}
+
+	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s"), (LPCTSTR)strFilePath);
+	TRACE(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s\n"), (LPCTSTR)strFilePath);
 
 	return TRUE;
 }

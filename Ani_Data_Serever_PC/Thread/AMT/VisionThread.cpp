@@ -1385,6 +1385,22 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile failed"), nFixtureNo);
 		}
 
+		// 写入 OpvDefectCode INI 文件（新机器 AOI 检测完成后生成，供 OPV 复检使用）
+		// 路径：D:\ANI\DataServer\Data\OpvDefectCode\{日期}\{PanelID}.ini
+		// 格式：Under,{Code},{Grade}=数量（与老机器格式一致）
+		if (!strBarcode.IsEmpty())
+		{
+			if (dfsInfo.WriteOpvDefectCodeINI(strBarcode, defectList, nResult))
+			{
+				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI success (PanelID=%s, DefectCount=%d)"),
+					nFixtureNo, (LPCTSTR)strBarcode, (int)defectList.size());
+			}
+			else
+			{
+				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI failed"), nFixtureNo);
+			}
+		}
+
 		// AOI NG 时加入 RankCode 列表（供等级码管理使用）
 		// 注意：第二个参数传 strBarcode（真实 FpcID），与 WriteAOICSVFile 写入路径保持一致
 		if (nPlcResult == m_codeFail)

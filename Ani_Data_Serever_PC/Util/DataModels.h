@@ -25,6 +25,7 @@ public:
     CString ScreenID;           // 屏二维码
     CString DeviceID;           // AOI检测设备号
     int PlatformID;             // 位置号 (0,1,2,3...)
+    CString LocalIP;            // AOI设备IP地址 (IP-Port目录名)
     CString ModelName;          // 检测模板名
     CString UniqueID;           // ICW唯一标识符
     CString MarkID;             // 屏号

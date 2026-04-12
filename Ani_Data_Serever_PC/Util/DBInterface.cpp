@@ -1446,74 +1446,74 @@ BOOL CDBInterface::QueryIDMapByPanelID(const CString& strPanelID, CIDMapInfo& id
 ///////////////////////////////////////////////////////////////////////////////
 // Query inspection result by UniqueID and convert to DFS data format
 ///////////////////////////////////////////////////////////////////////////////
-BOOL CDBInterface::QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData)
-{
-    dfsData.Reset();
-
-    CString strSQL;
-    strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
-        EscapeString(strUniqueID));
-
-    SQLHSTMT hStmt;
-    if (!ExecuteQuery(strSQL, hStmt))
-        return FALSE;
-
-    SQLRETURN ret = SQLFetch(hStmt);
-    if (ret == SQL_NO_DATA)
-    {
-        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-        m_strLastError = _T("No inspection result found for UniqueID: ") + strUniqueID;
-        return FALSE;
-    }
-
-    if (ret == SQL_ERROR)
-    {
-        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-        return FALSE;
-    }
-
-    CString strTemp;
-
-    dfsData.m_PanelID = GetColumnString(hStmt, 3);
-    dfsData.m_FpcID = dfsData.m_PanelID;
-    dfsData.m_StartTime = GetColumnString(hStmt, 10);
-    dfsData.m_EndTime = GetColumnString(hStmt, 11);
-    dfsData.m_StageNum = GetColumnInt(hStmt, 5) + 1;
-
-    strTemp = GetColumnString(hStmt, 14);
-    if (strTemp.CompareNoCase(_T("OK")) == 0)
-        dfsData.m_AOIInpsect = _T("OK");
-    else if (strTemp.IsEmpty() || strTemp.CompareNoCase(_T("NG")) == 0)
-        dfsData.m_AOIInpsect = _T("NG");
-    else
-        dfsData.m_AOIInpsect = _T("NG");
-
-    dfsData.m_ModelID = _T("");
-    dfsData.m_IndexNum = strTemp;
-    dfsData.m_ChNum = _T("1");
-
-    dfsData.m_Contact = _T("BYPASS");
-    dfsData.m_PreGamma = _T("BYPASS");
-    dfsData.m_TpResult = _T("BYPASS");
-    dfsData.m_TpResult2 = _T("BYPASS");
-    dfsData.m_Lumitop = _T("BYPASS");
-    dfsData.m_mura = _T("BYPASS");
-    dfsData.m_opViewResult = _T("BYPASS");
-
-    dfsData.m_TpTime = _T("0");
-    dfsData.m_PreGammaTime = _T("0");
-    dfsData.m_TactTime = _T("0");
-    dfsData.m_LoadHandlerTime = _T("");
-    dfsData.m_UnloadHandlerTime = _T("");
-    dfsData.m_PreGammaContactStatus = _T("3");
-
-    dfsData.m_TypeNum = 1;
-
-    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-    return TRUE;
-}
+//BOOL CDBInterface::QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData)
+//{
+//    dfsData.Reset();
+//
+//    CString strSQL;
+//    strSQL.Format(
+//        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
+//        EscapeString(strUniqueID));
+//
+//    SQLHSTMT hStmt;
+//    if (!ExecuteQuery(strSQL, hStmt))
+//        return FALSE;
+//
+//    SQLRETURN ret = SQLFetch(hStmt);
+//    if (ret == SQL_NO_DATA)
+//    {
+//        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//        m_strLastError = _T("No inspection result found for UniqueID: ") + strUniqueID;
+//        return FALSE;
+//    }
+//
+//    if (ret == SQL_ERROR)
+//    {
+//        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+//        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//        return FALSE;
+//    }
+//
+//    CString strTemp;
+//
+//    dfsData.m_PanelID = GetColumnString(hStmt, 3);
+//    dfsData.m_FpcID = dfsData.m_PanelID;
+//    dfsData.m_StartTime = GetColumnString(hStmt, 10);
+//    dfsData.m_EndTime = GetColumnString(hStmt, 11);
+//    dfsData.m_StageNum = GetColumnInt(hStmt, 5) + 1;
+//
+//    strTemp = GetColumnString(hStmt, 14);
+//    if (strTemp.CompareNoCase(_T("OK")) == 0)
+//        dfsData.m_AOIInpsect = _T("OK");
+//    else if (strTemp.IsEmpty() || strTemp.CompareNoCase(_T("NG")) == 0)
+//        dfsData.m_AOIInpsect = _T("NG");
+//    else
+//        dfsData.m_AOIInpsect = _T("NG");
+//
+//    dfsData.m_ModelID = _T("");
+//    dfsData.m_IndexNum = strTemp;
+//    dfsData.m_ChNum = _T("1");
+//
+//    dfsData.m_Contact = _T("BYPASS");
+//    dfsData.m_PreGamma = _T("BYPASS");
+//    dfsData.m_TpResult = _T("BYPASS");
+//    dfsData.m_TpResult2 = _T("BYPASS");
+//    dfsData.m_Lumitop = _T("BYPASS");
+//    dfsData.m_mura = _T("BYPASS");
+//    dfsData.m_opViewResult = _T("BYPASS");
+//
+//    dfsData.m_TpTime = _T("0");
+//    dfsData.m_PreGammaTime = _T("0");
+//    dfsData.m_TactTime = _T("0");
+//    dfsData.m_LoadHandlerTime = _T("");
+//    dfsData.m_UnloadHandlerTime = _T("");
+//    dfsData.m_PreGammaContactStatus = _T("3");
+//
+//    dfsData.m_TypeNum = 1;
+//
+//    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//    return TRUE;
+//}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Query by panel barcode
@@ -1524,7 +1524,8 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
 
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
+        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, LocalIP, UniqueID, AOIResult, Grade_AOI, StartTime ")
+        _T("FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
         EscapeString(strBarcode));
 
     SQLHSTMT hStmt;
@@ -1543,11 +1544,21 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
 
         CInspectionResult result;
         result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
-        result.GUID = GetColumnString(hStmt, 2);
-        result.ScreenID = GetColumnString(hStmt, 3);
-        result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
-        result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
-        result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
+        result.GUID = GetColumnString(hStmt, 2);        // 2: GUID
+        result.ScreenID = GetColumnString(hStmt, 3);    // 3: ScreenID
+        result.DeviceID = GetColumnString(hStmt, 4);    // 4: DeviceID
+        result.PlatformID = GetColumnInt(hStmt, 5);     // 5: PlatformID
+        result.LocalIP = GetColumnString(hStmt, 6);     // 6: LocalIP
+        result.UniqueID = GetColumnString(hStmt, 7);    // 7: UniqueID
+        result.AOIResult = GetColumnString(hStmt, 8);   // 8: AOIResult
+        result.Grade_AOI = GetColumnString(hStmt, 9);   // 9: Grade_AOI
+
+        // 解析时间字符串，处理毫秒 ".920" 后缀
+        CString strStartTime = GetColumnString(hStmt, 10);  // 10: StartTime
+        int nDot = strStartTime.Find('.');
+        if (nDot >= 0)
+            strStartTime = strStartTime.Left(nDot);  // 去掉毫秒部分
+        result.StartTime.ParseDateTime(strStartTime);
 
         results.push_back(result);
     }

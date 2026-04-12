@@ -375,13 +375,16 @@ void CFTPClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	m_pFtpConnection->SetCurrentDirectory(_T("/"));
 	
 	theApp.m_pFTPLog->Info2(_T("==================FTP connection Upload================="));
+	theApp.m_pFTPLog->Info(_T("[FTP] Upload Start: source=%s, dest=%s"), source, dest);
 	if (!m_pFtpConnection->PutFile(source, dest)){
+		theApp.m_pFTPLog->Error(_T("[FTP] PutFile FAILED: source=%s, dest=%s"), source, dest);
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
 		delete m_pDFSSession;
 		m_pDFSSession = NULL;
 		return;
 	}
+	theApp.m_pFTPLog->Info(_T("[FTP] PutFile SUCCESS: source=%s, dest=%s"), source, dest);
 	m_pFtpConnection->Close();
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;
@@ -467,12 +470,14 @@ void CFTPClient::DownLoadFile(CString &source, CString &dest, BOOL &bSend)
 	str.Format(_T("==================FTP connection DownLoad source : %s , dest : %s ================="), source, dest);
 	theApp.m_pFTPLog->Info2(str);
 	if (!m_pFtpConnection->GetFile(source, dest)){
+		theApp.m_pFTPLog->Error(_T("[FTP] GetFile FAILED: source=%s, dest=%s"), source, dest);
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
 		delete m_pDFSSession;
 		m_pDFSSession = NULL;
 		return;
 	}
+	theApp.m_pFTPLog->Info(_T("[FTP] GetFile SUCCESS: source=%s, dest=%s"), source, dest);
 	m_pFtpConnection->Close();
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;

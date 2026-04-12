@@ -465,6 +465,10 @@ void CPgManager::AOIDataReceived(CString strContents)
 					theApp.LoadResultIndexCode(InspResult.m_cellId, InspResult.m_FpcID);
 					int iSendNGBuffer(Flow_AfterMachine);
 					theApp.m_pTestLog->Info(_T("m_FlowResultDatas.size() : %d, panel id : %s"), theApp.m_FlowResultDatas.size(), InspResult.m_cellId);
+					for (auto& flowData : theApp.m_FlowResultDatas)
+					{
+						theApp.m_pTestLog->Info(_T("[FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second);
+					}
 					if (theApp.m_FlowResultDatas.size() > 0)
 					{
 						for (auto Grades : theApp.m_VecGradeFlow)

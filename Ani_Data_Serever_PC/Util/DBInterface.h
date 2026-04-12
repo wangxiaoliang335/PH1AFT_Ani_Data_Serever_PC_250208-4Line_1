@@ -74,7 +74,7 @@ public:
 
     // Query inspection result by UniqueID and convert to DFS data format (for FTP upload)
     // Returned DfsDataValue can be directly passed to CDFSClient::AddTransferFile or DfsAddTransferFile
-    BOOL QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData);
+    //BOOL QueryInspectionResultForDFS(const CString& strUniqueID, DfsDataValue& dfsData);
 
     // Query by date range
     BOOL QueryByDateRange(const COleDateTime& dtStart,

@@ -9,6 +9,8 @@
 #include "DataInfo.h"
 #include "Ani_Data_Serever_PC.h"
 #include "DBInterface.h"
+#include <Shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
 
 ////////////////////////////////////////////////////////////////////////////////
 // CDFSClient（DFS 报工 FTP 客户端，总体流程说明）
@@ -401,13 +403,16 @@ void CDFSClient::UploadFile(CString &source, CString &dest, BOOL &bSend)
 	m_pFtpConnection->SetCurrentDirectory(_T("/"));
 	
 	theApp.m_pFTPLog->Info2(_T("==================FTP connection Upload================="));
+	theApp.m_pFTPLog->Info(_T("[DFS] FTP Upload Start: source=%s, dest=%s"), source, dest);
 	if (!m_pFtpConnection->PutFile(source, dest)){
+		theApp.m_pFTPLog->Error(_T("[DFS] FTP PutFile FAILED: source=%s, dest=%s"), source, dest);
 		delete m_pFtpConnection;
 		m_pFtpConnection = NULL;
 		delete m_pDFSSession;
 		m_pDFSSession = NULL;
 		return;
 	}
+	theApp.m_pFTPLog->Info(_T("[DFS] FTP PutFile SUCCESS: source=%s, dest=%s"), source, dest);
 	m_pFtpConnection->Close();
 	delete m_pFtpConnection;
 	m_pFtpConnection = NULL;
@@ -704,7 +709,10 @@ void CDFSClient::RunDfsUploadThread()
 				dfsData = m_DfsUploadtransferFileList.front();
 				strPanelID = dfsData.m_PanelID;
 				strFpcID = dfsData.m_FpcID;
-				theApp.m_pFTPLog->Debug(_T("Sum DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
+				theApp.m_pFTPLog->Info(_T("Sum DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
+				/*theApp.m_pFTPLog->Info(_T("[DFS] >>> Start Process PanelID=%s, Stage=%d, ChNum=%s, AOI=%s, TP=%s, Lumitop=%s"), 
+					strPanelID, dfsData.m_StageNum, dfsData.m_ChNum, 
+					dfsData.m_AOIInpsect, dfsData.m_TpResult2, dfsData.m_Lumitop);*/
 			//	m_csDfsUploadLock.Unlock();
 #if _SYSTEM_AMTAFT_
 				if (strPanelID.IsEmpty() == FALSE)
@@ -726,27 +734,46 @@ void CDFSClient::RunDfsUploadThread()
 					// ===== 按 ImagePath 复制缺陷图像到 AOI 目录 =====
 					// 从数据库查询 ImagePath，先复制到 AOI\Image 目录，后续由 CopyImage 汇总到 SUM\Image
 					CreateFolders(strAoiImagePath);
+					theApp.m_pFTPLog->Info(_T("[DFS] AOI Image Path=%s"), strAoiImagePath);
+					
 					if (GetDBInterface().IsConnected())
 					{
+						theApp.m_pFTPLog->Debug(_T("[DFS] DB Connected, QueryByBarcode PanelID=%s"), strPanelID);
 						// 按 ScreenID 查询最新的检测结果
 						CInspectionResultList results;
 						if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
 						{
+							theApp.m_pFTPLog->Info(_T("[DFS] QueryByBarcode SUCCESS, result count=%d, GUID=%s"), 
+								results.size(), results.front().GUID);
 							// 取最新的检测结果
 							CInspectionResult& inspResult = results.front();
 							CDefectInfoList defectList;
 							if (GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
 							{
+								theApp.m_pFTPLog->Info(_T("[DFS] QueryDefectsByParentGUID SUCCESS, defect count=%d"), defectList.size());
+								int nDefectIndex = 0;
 								for (const auto& defect : defectList)
 								{
+									nDefectIndex++;
 								if (!defect.ImagePath.IsEmpty())
 								{
 									// ImagePath 可能是相对路径或绝对路径
 									// 如果是相对路径，需要拼接根目录；如果是绝对路径直接使用
 									CString strSrcImagePath;
-									// 如果 ImagePath 已经是绝对路径（包含盘符如 D:\），直接使用
-									if (defect.ImagePath.GetLength() >= 3 && 
-										defect.ImagePath.Mid(1) == _T(":\\"))
+									// 修复：检查是否包含盘符（如 D:\ 或 E:\）
+									// 绝对路径特征：第2个字符是 ':'，第3个字符是 '\'
+									BOOL bIsAbsolutePath = FALSE;
+									if (defect.ImagePath.GetLength() >= 3)
+									{
+										TCHAR ch1 = defect.ImagePath.GetAt(1);  // 第2个字符
+										TCHAR ch2 = defect.ImagePath.GetAt(2);  // 第3个字符
+										if (ch1 == ':' && ch2 == '\\')
+										{
+											bIsAbsolutePath = TRUE;
+										}
+									}
+									// 如果是绝对路径，直接使用
+									if (bIsAbsolutePath)
 									{
 										strSrcImagePath = defect.ImagePath;
 									}
@@ -756,16 +783,25 @@ void CDFSClient::RunDfsUploadThread()
 										strSrcImagePath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
 									}
 										CString strFileName = strSrcImagePath;
-										int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
-										if (nLastSlash >= 0)
-											strFileName = strSrcImagePath.Mid(nLastSlash + 1);
-										CString strDestImagePath = strAoiImagePath + _T("\\") + strFileName;
+									int nLastSlash = max(strSrcImagePath.ReverseFind('\\'), strSrcImagePath.ReverseFind('/'));
+									if (nLastSlash >= 0)
+										strFileName = strSrcImagePath.Mid(nLastSlash + 1);
+									CString strDestImagePath = strAoiImagePath + _T("\\") + strFileName;
+									theApp.m_pFTPLog->Debug(_T("[DFS] Defect[%d] ImagePath: src=%s, dest=%s"), 
+										nDefectIndex, strSrcImagePath, strDestImagePath);
 
-										if (FileExists(strSrcImagePath))
+									if (FileExists(strSrcImagePath))
+									{
+										if (!::CopyFile(strSrcImagePath, strDestImagePath, FALSE))
 										{
-											::CopyFile(strSrcImagePath, strDestImagePath, FALSE);
-											theApp.m_pFTPLog->Debug(_T("CopyImageByPath: %s -> AOI\\Image"), strSrcImagePath);
+											theApp.m_pFTPLog->Error(_T("[DFS] DefectImage CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+												strSrcImagePath, strDestImagePath, GetLastError());
 										}
+										else
+										{
+											theApp.m_pFTPLog->Debug(_T("[DFS] DefectImage copied: %s -> AOI\\Image"), strSrcImagePath);
+										}
+									}
 										else
 										{
 											theApp.m_pFTPLog->Info(_T("ImagePath file not found: %s"), strSrcImagePath);
@@ -774,9 +810,10 @@ void CDFSClient::RunDfsUploadThread()
 								}
 							}
 
-							// ===== 复制 AOI 目录下的特殊图片（L*.bmp 和 MarkImg.jpg） =====
-							// 获取第一个缺陷的 ImagePath，提取 PanelID 目录路径
+							// ===== 复制特殊图片（L*.bmp 等级图、MarkImg.jpg 标记图） =====
+							// 优先从缺陷表 ImagePath 获取目录路径
 							CString strAoiImageDir;
+							BOOL bFoundAoiDir = FALSE;
 							for (const auto& defect : defectList)
 							{
 								if (!defect.ImagePath.IsEmpty())
@@ -786,17 +823,63 @@ void CDFSClient::RunDfsUploadThread()
 									if (nLastSlash >= 0)
 									{
 										strAoiImageDir = strSrcImagePath.Left(nLastSlash);  // PanelID 目录
+										theApp.m_pFTPLog->Debug(_T("[DFS] Try AoiImageDir from defect ImagePath: %s"), strAoiImageDir);
+										// 验证目录是否存在
+										if (PathIsDirectory(strAoiImageDir))
+										{
+											bFoundAoiDir = TRUE;
+											break;
+										}
+										else
+										{
+											theApp.m_pFTPLog->Debug(_T("[DFS] Defect ImagePath dir not exist: %s"), strAoiImageDir);
+										}
 									}
 									break;
 								}
 							}
 
+							// 如果缺陷表 ImagePath 获取不到，则从数据库字段构建路径
+							// 路径结构：MainAOI\<LocalIP>\<PlatformID+1>\<StartTime日期>\<PanelID>
+							if (!bFoundAoiDir && !inspResult.LocalIP.IsEmpty() && inspResult.PlatformID >= 0)
+							{
+								theApp.m_pFTPLog->Debug(_T("[DFS] Building path from DB fields: LocalIP=%s, PlatformID=%d, StartTime=%s"), 
+									(LPCTSTR)inspResult.LocalIP, inspResult.PlatformID, inspResult.StartTime.Format(_T("%Y-%m-%d")));
+								
+								// 构建路径：MainAOI\<LocalIP>\<PlatformID+1>\<Date>\<PanelID>
+								CString strIndexDir;
+								strIndexDir.Format(_T("%d"), inspResult.PlatformID + 1);  // Index = PlatformID + 1
+								
+								CString strDateDir = inspResult.StartTime.Format(_T("%Y-%m-%d"));  // 日期
+								
+								strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"), 
+									DEFAULT_MAIN_AOI_IMAGE_ROOT,
+									(LPCTSTR)inspResult.LocalIP,
+									(LPCTSTR)strIndexDir,
+									(LPCTSTR)strDateDir,
+									(LPCTSTR)strPanelID);
+								
+								theApp.m_pFTPLog->Debug(_T("[DFS] Built AoiImageDir from DB: %s"), strAoiImageDir);
+								
+								// 检查目录是否存在
+								if (PathIsDirectory(strAoiImageDir))
+								{
+									bFoundAoiDir = TRUE;
+								}
+								else
+								{
+									theApp.m_pFTPLog->Debug(_T("[DFS] Built AoiImageDir not exist: %s"), strAoiImageDir);
+								}
+							}
+
 							if (!strAoiImageDir.IsEmpty())
 							{
+								theApp.m_pFTPLog->Debug(_T("[DFS] AOI Image Dir=%s"), strAoiImageDir);
 								// 复制 L*.bmp (等级标记图)
 								CFileFind fileFind;
 								CString strSearchPattern = strAoiImageDir + _T("\\L*.bmp");
 								BOOL bFind = fileFind.FindFile(strSearchPattern);
+								int nGradeImageCount = 0;
 								while (bFind)
 								{
 									bFind = fileFind.FindNextFile();
@@ -804,20 +887,40 @@ void CDFSClient::RunDfsUploadThread()
 									{
 										CString strSrcFile = fileFind.GetFilePath();
 										CString strDestFile = strAoiImagePath + _T("\\") + fileFind.GetFileName();
-										::CopyFile(strSrcFile, strDestFile, FALSE);
-										theApp.m_pFTPLog->Debug(_T("CopyGradeImage: %s -> AOI\\Image"), strSrcFile);
+										if (!::CopyFile(strSrcFile, strDestFile, FALSE))
+										{
+											theApp.m_pFTPLog->Error(_T("[DFS] GradeImage CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+												strSrcFile, strDestFile, GetLastError());
+										}
+										else
+										{
+											nGradeImageCount++;
+											theApp.m_pFTPLog->Debug(_T("[DFS] GradeImage copied: %s -> AOI\\Image"), strSrcFile);
+										}
 									}
 								}
 								fileFind.Close();
+								theApp.m_pFTPLog->Info(_T("[DFS] Grade images copied: count=%d"), nGradeImageCount);
 
 								// 复制 MarkImg.jpg (Mark 标记图)
 								CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
 								CString strMarkDest = strAoiImagePath + _T("\\MarkImg.jpg");
 								if (FileExists(strMarkSrc))
 								{
-									::CopyFile(strMarkSrc, strMarkDest, FALSE);
-									theApp.m_pFTPLog->Debug(_T("CopyMarkImage: %s -> AOI\\Image"), strMarkSrc);
+									if (!::CopyFile(strMarkSrc, strMarkDest, FALSE))
+									{
+										theApp.m_pFTPLog->Error(_T("[DFS] MarkImage CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+											strMarkSrc, strMarkDest, GetLastError());
+									}
+									else
+									{
+										theApp.m_pFTPLog->Info(_T("[DFS] Mark image copied: %s -> %s"), strMarkSrc, strMarkDest);
+									}
 								}
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS] No AOI Image Dir found, skip grade/mark image copy"));
 							}
 							// ===== 复制特殊图片结束 =====
 						}
@@ -828,14 +931,30 @@ void CDFSClient::RunDfsUploadThread()
 					}
 					// ===== 按 ImagePath 复制结束 =====
 
+					// ===== Lumitop CSV 检查日志 =====
+					CString strLumitopFullPath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\LUMITOP\\") + strPanelID + _T(".csv");
+					if (FileExists(strLumitopFullPath)) {
+						theApp.m_pFTPLog->Debug(_T("[DFS] Lumitop CSV exists=%s"), strLumitopFullPath);
+					}
+					else {
+						theApp.m_pFTPLog->Info(_T("[DFS] Lumitop File Path Error : %s,"), strLumitopFullPath);
+					}
+					// ===== Lumitop CSV 检查结束 =====
+
+					// ===== 汇总图片到 SUM 目录 =====
+					theApp.m_pFTPLog->Info(_T("[DFS] CopyImage Start: src=%s, dest=%s"), strAoiImagePath, strSumImagePath);
 					DfsInfo.CopyImage(strAoiImagePath, strSumImagePath);
+					theApp.m_pFTPLog->Info(_T("[DFS] CopyImage End"));
 					//DfsInfo.CopyImage(strViewingImagePath, strSumImagePath);
 
 					strSumPath = strTemp1 + strPanelID + _T(".csv");
 					//strSumImagePath = strTemp1 + _T("Image");
 
+					theApp.m_pFTPLog->Info(_T("[DFS] SetLoadFile Start: PanelID=%s"), strPanelID);
 					DfsDataValue result;
 					result = DataInfo.SetLoadFile(strPanelID);
+					theApp.m_pFTPLog->Info(_T("[DFS] SetLoadFile End: ChNum=%s, PreGammaContactStatus=%s"), 
+						result.m_ChNum, result.m_PreGammaContactStatus);
 
 					if (_ttoi(result.m_ChNum) > 2)
 					{
@@ -891,19 +1010,33 @@ void CDFSClient::RunDfsUploadThread()
 					if (_ttoi(result.m_PreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(result.m_PreGammaContactStatus) == m_dfsContactNG || _ttoi(result.m_TpResult) == m_dfsTpNG)
 						DfsInfo.AddDefectCodeResult(strPanelID, _ttoi(result.m_PreGammaContactStatus), _ttoi(result.m_TpResult), Machine_ULD);
 					//>>PG DFS Load
+					theApp.m_pFTPLog->Info(_T("[DFS] PGDfsInfoLoad Start: PanelID=%s"), strPanelID);
 					DfsInfo.PGDfsInfoLoad(strPanelID);
+					theApp.m_pFTPLog->Info(_T("[DFS] PGDfsInfoLoad End"));
 					//<<
 
+					theApp.m_pFTPLog->Info(_T("[DFS] AMTAFTSavePanelDFS_SUM Start: PanelID=%s"), strPanelID);
 					DfsInfo.AMTAFTSavePanelDFS_SUM(result, strPanelID, strFpcID, strAOIPath, strViewingPath, strLumitopPath, strOpvFilPath, strSumPath);
+					theApp.m_pFTPLog->Info(_T("[DFS] AMTAFTSavePanelDFS_SUM End, SUM Path=%s"), strSumPath);
 
-					BOOL bTransfer = TRUE;
+				BOOL bTransfer = TRUE;
 
-					if (!FileExists(strSumPath)){
-						theApp.m_pFTPLog->Info2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
+				if (!FileExists(strSumPath)){
+					theApp.m_pFTPLog->Info2(CStringSupport::FormatString(_T("[%s] Inspect Not exist csv File"), strPanelID));
+					theApp.m_pFTPLog->Info(_T("[DFS] ERROR: SUM CSV not exist=%s"), strSumPath);
+				}
+				else
+				{
+					// 获取文件大小用于日志
+					WIN32_FIND_DATA findData;
+					HANDLE hFind = FindFirstFile(strSumPath, &findData);
+					int nFileSize = 0;
+					if (hFind != INVALID_HANDLE_VALUE) {
+						nFileSize = (int)(findData.nFileSizeLow / 1024); // KB
+						FindClose(hFind);
 					}
-					else
-					{
-						CString strUploadEQPID = CStringSupport::FormatString(_T("%s%s"), theApp.m_strEqpId, theApp.m_strEqpNum);
+					theApp.m_pFTPLog->Info(_T("[DFS] SUM CSV exists=%s, size=%d KB"), strSumPath, nFileSize);
+					CString strUploadEQPID = CStringSupport::FormatString(_T("%s%s"), theApp.m_strEqpId, theApp.m_strEqpNum);
 
 						if (strPanelID.GetLength() >= DFS_CHECK_PANEL_SIZE)
 						{
@@ -921,9 +1054,11 @@ void CDFSClient::RunDfsUploadThread()
 							strImageFilePath = strCsvFilePath;
 							SetFilePath(&strImageFilePath, _T("Image"));
 							CreateFolders(strImageFilePath);
+							theApp.m_pFTPLog->Info(_T("[DFS] Image Path created=%s"), strImageFilePath);
 
 							SetFilePath(&strCsvFilePath, _T("Data"));
 							CreateFolders(strCsvFilePath);
+							theApp.m_pFTPLog->Info(_T("[DFS] Data Path created=%s"), strCsvFilePath);
 
 							if (theApp.m_bDFSTestMode == TRUE)
 								strLinkFilePath = strIndexFilePath = _T("D:\\TEST");
@@ -955,8 +1090,27 @@ void CDFSClient::RunDfsUploadThread()
 							strLinkFilePath = strLinkFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 							strCsvFilePath = strCsvFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 
-							::CopyFile(strSumPath, strLinkFilePath, FALSE);		//Link 파일 업로드
-							::MoveFile(strSumPath, strCsvFilePath);		//csv 파일 업로드
+							theApp.m_pFTPLog->Info(_T("[DFS] Link File Path=%s"), strLinkFilePath);
+							theApp.m_pFTPLog->Info(_T("[DFS] CSV File Path=%s"), strCsvFilePath);
+
+							if (!::CopyFile(strSumPath, strLinkFilePath, FALSE))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS] CopyFile FAILED: source=%s, dest=%s, error=%d"), 
+									strSumPath, strLinkFilePath, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS] Link File copied SUCCESS, exist=%d"), FileExists(strLinkFilePath));
+							}
+							if (!::MoveFile(strSumPath, strCsvFilePath))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS] MoveFile FAILED: source=%s, dest=%s, error=%d"), 
+									strSumPath, strCsvFilePath, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS] CSV File moved SUCCESS, exist=%d"), FileExists(strCsvFilePath));
+							}
 
 							if (theApp.m_bDFSTestMode == TRUE)
 								strCsvFilePath.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
@@ -977,7 +1131,49 @@ void CDFSClient::RunDfsUploadThread()
 
 								if (FileExists(strSrc))
 								{
-									::MoveFile(strSrc, strDest);		// 화면검사 image 업로드
+									// 目标文件存在时先删除
+									if (FileExists(strDest))
+									{
+										theApp.m_pFTPLog->Debug(_T("[DFS] OPV Image: dest exists, delete first: %s"), strDest);
+										::DeleteFile(strDest);
+									}
+
+									// 使用 CopyFile + DeleteFile 替代 MoveFile（更稳定的跨网络操作）
+									BOOL bCopySuccess = FALSE;
+									for (int nRetry = 0; nRetry < 3; nRetry++)
+									{
+										if (::CopyFile(strSrc, strDest, FALSE))
+										{
+											bCopySuccess = TRUE;
+											break;
+										}
+										int nError = GetLastError();
+										if (nError == 80)  // 文件被占用，等待后重试
+										{
+											theApp.m_pFTPLog->Debug(_T("[DFS] OPV Image CopyFile retry %d: error=%d"), nRetry + 1, nError);
+											Sleep(100);
+										}
+										else
+										{
+											break;  // 其他错误不再重试
+										}
+									}
+
+									if (!bCopySuccess)
+									{
+										theApp.m_pFTPLog->Error(_T("[DFS] OPV Image CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+											strSrc, strDest, GetLastError());
+									}
+									else
+									{
+										theApp.m_pFTPLog->Info(_T("[DFS] OPV Image copied: %s -> %s"), strSrc, strDest);
+										// 复制成功后删除源文件
+										if (!::DeleteFile(strSrc))
+										{
+											int nDelErr = GetLastError();
+											theApp.m_pFTPLog->Debug(_T("[DFS] OPV Image DeleteFile failed (ignored): %s, error=%d"), strSrc, nDelErr);
+										}
+									}
 									if (theApp.m_bDFSTestMode == TRUE)
 										strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
 									else
@@ -992,6 +1188,61 @@ void CDFSClient::RunDfsUploadThread()
 									theApp.m_pFTPLog->Info2(_T("Vision Not exist image file"));
 							}
 
+							// ===== 额外上传 L255.bmp 和 MarkImg.jpg =====
+							CString strExtraImgList[2] = { _T("L255.bmp"), _T("MarkImg.jpg") };
+							for (int n = 0; n < 2; n++)
+							{
+								CString strImgName = strExtraImgList[n];
+								strSrc = strSumImagePath + _T("\\") + strImgName;
+								strDest = strImageFilePath + _T("\\") + strImgName;
+
+								if (FileExists(strSrc))
+								{
+									// 目标文件存在时先删除
+									if (FileExists(strDest))
+									{
+										theApp.m_pFTPLog->Debug(_T("[DFS] Extra Image: dest exists, delete first: %s"), strDest);
+										::DeleteFile(strDest);
+									}
+
+									// 使用 CopyFile + DeleteFile 替代 MoveFile
+									BOOL bCopySuccess = FALSE;
+									for (int nRetry = 0; nRetry < 3; nRetry++)
+									{
+										if (::CopyFile(strSrc, strDest, FALSE))
+										{
+											bCopySuccess = TRUE;
+											break;
+										}
+										int nError = GetLastError();
+										if (nError == 80)  // 文件被占用，等待后重试
+										{
+											theApp.m_pFTPLog->Debug(_T("[DFS] Extra Image CopyFile retry %d: %s, error=%d"), nRetry + 1, strImgName, nError);
+											Sleep(100);
+										}
+										else
+										{
+											break;
+										}
+									}
+
+									if (!bCopySuccess)
+									{
+										theApp.m_pFTPLog->Error(_T("[DFS] Extra Image CopyFile FAILED: %s, error=%d"), strImgName, GetLastError());
+									}
+									else
+									{
+										theApp.m_pFTPLog->Info(_T("[DFS] Extra Image copied: %s -> %s"), strSrc, strDest);
+										// 复制成功后删除源文件
+										::DeleteFile(strSrc);
+									}
+								}
+								else
+								{
+									theApp.m_pFTPLog->Debug(_T("[DFS] Extra Image not found (ignored): %s"), strSrc);
+								}
+							}
+
 							//전체Image File Name 항상 통일
 							strSrc = strSumImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
 							strDest = strImageFilePath + _T("\\") + strProcessID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + GetNowSystemTimeMillisecondsSirius4() + _T(".jpg");
@@ -1003,8 +1254,49 @@ void CDFSClient::RunDfsUploadThread()
 							strDest2.Format(_T("%s\\%s_%s_%s_Layout_%s_%02d%02d%02d.jpg"), strImageFilePath, strProcessID, DfsInfo.m_PanelDataBegin.strPanel_ID, theApp.m_strEqpId + theApp.m_strEqpNum, GetDateString2(), now.GetHour(), now.GetMinute(), now.GetSecond());
 							if (FileExists(strSrc))
 							{
-								//::CopyFile(strSrc, strDest, FALSE);		// 전체 image 업로드
-								::MoveFile(strSrc, strDest2);		// 전체 image 업로드
+								// 目标文件存在时先删除
+								if (FileExists(strDest2))
+								{
+									theApp.m_pFTPLog->Debug(_T("[DFS] Layout Image: dest exists, delete first: %s"), strDest2);
+									::DeleteFile(strDest2);
+								}
+
+								// 使用 CopyFile + DeleteFile 替代 MoveFile（更稳定的跨网络操作）
+								BOOL bCopySuccess = FALSE;
+								for (int nRetry = 0; nRetry < 3; nRetry++)
+								{
+									if (::CopyFile(strSrc, strDest2, FALSE))
+									{
+										bCopySuccess = TRUE;
+										break;
+									}
+									int nError = GetLastError();
+									if (nError == 80)  // 文件被占用，等待后重试
+									{
+										theApp.m_pFTPLog->Debug(_T("[DFS] Layout Image CopyFile retry %d: error=%d"), nRetry + 1, nError);
+										Sleep(100);
+									}
+									else
+									{
+										break;  // 其他错误不再重试
+									}
+								}
+
+								if (!bCopySuccess)
+								{
+									theApp.m_pFTPLog->Error(_T("[DFS] Layout Image CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+										strSrc, strDest2, GetLastError());
+								}
+								else
+								{
+									theApp.m_pFTPLog->Info(_T("[DFS] Layout Image copied: %s -> %s"), strSrc, strDest2);
+									// 复制成功后删除源文件
+									if (!::DeleteFile(strSrc))
+									{
+										int nDelErr = GetLastError();
+										theApp.m_pFTPLog->Debug(_T("[DFS] Layout Image DeleteFile failed (ignored): %s, error=%d"), strSrc, nDelErr);
+									}
+								}
 								
 
 								strSrc = strSumImagePath;
@@ -1022,12 +1314,23 @@ void CDFSClient::RunDfsUploadThread()
 								m_vecIndexValue.push_back(strDest2);
 							}
 							else
-								theApp.m_pFTPLog->Info2(_T("Not exist image file"));
+								theApp.m_pFTPLog->Info2(_T("Not exist Layout image file"));
 
 							DfsIDXFileCreate(strUploadEQPID, &strIndexFile);
 							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + strUploadEQPID + _T(".csv");
 
-							::CopyFile(strIndexFile, strDest, FALSE);			//index 파일 업로드
+							theApp.m_pFTPLog->Info(_T("[DFS] INDEX File created=%s, CSV=%s, Link=%s"), 
+								strIndexFile, strCsvFilePath, strLinkFilePath);
+
+							if (!::CopyFile(strIndexFile, strDest, FALSE))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS] INDEX CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+									strIndexFile, strDest, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS] INDEX File copied SUCCESS: %s -> %s"), strIndexFile, strDest);
+							}
 							CString strDelete;
 							strDelete = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID;
 							//DeleteFolderAndFile(strDelete,0);
@@ -1052,6 +1355,9 @@ void CDFSClient::RunDfsUploadThread()
 						}
 
 					}
+					// ===== DFS 处理完成日志 =====
+					theApp.m_pFTPLog->Info(_T("[DFS] <<< PanelID=%s DFS Process COMPLETE, Queue remaining=%d"), 
+						strPanelID, m_DfsUploadtransferFileList.size());
 				}
 
 				Delay(10, TRUE);
@@ -1121,9 +1427,25 @@ void CDFSClient::RunDfsUploadThread()
 				
 							strLinkFilePath = strLinkFilePath + _T("\\") + DfsInfo.m_PanelDataBegin.strProcess_ID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
 							strCsvFilePath = strCsvFilePath + _T("\\") + DfsInfo.m_PanelDataBegin.strProcess_ID + _T("_") + DfsInfo.m_PanelDataBegin.strPanel_ID + _T("_") + GetNowSystemTimeMillisecondsSirius() + _T(".csv");
-				
-							::CopyFile(strSumPath, strLinkFilePath, FALSE);		//Link 파일 업로드
-							::CopyFile(strSumPath, strCsvFilePath, FALSE);		//csv 파일 업로드
+
+							if (!::CopyFile(strSumPath, strLinkFilePath, FALSE))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS][Gamma] CopyFile FAILED: source=%s, dest=%s, error=%d"), 
+									strSumPath, strLinkFilePath, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS][Gamma] Link File copied: %s -> %s"), strSumPath, strLinkFilePath);
+							}
+							if (!::CopyFile(strSumPath, strCsvFilePath, FALSE))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS][Gamma] CopyFile FAILED: source=%s, dest=%s, error=%d"), 
+									strSumPath, strCsvFilePath, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS][Gamma] CSV File copied: %s -> %s"), strSumPath, strCsvFilePath);
+							}
 				
 							if (theApp.m_bDFSTestMode == TRUE)
 								strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
@@ -1135,8 +1457,16 @@ void CDFSClient::RunDfsUploadThread()
 							
 							DfsIDXFileCreate(DfsInfo.m_HeaderInfo.strEQP_ID, &strIndexFile);
 							strDest = strIndexFilePath + _T("\\") + GetDateString2() + _T("_") + DfsInfo.m_HeaderInfo.strEQP_ID + _T(".csv");
-				
-							::CopyFile(strIndexFile, strDest, FALSE);			//index파일 업로드
+
+							if (!::CopyFile(strIndexFile, strDest, FALSE))
+							{
+								theApp.m_pFTPLog->Error(_T("[DFS][Gamma] INDEX CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+									strIndexFile, strDest, GetLastError());
+							}
+							else
+							{
+								theApp.m_pFTPLog->Info(_T("[DFS][Gamma] INDEX File copied: %s -> %s"), strIndexFile, strDest);
+							}
 						}
 						else
 							theApp.m_pFTPLog->Info2(_T("Panel ID length is short."));
