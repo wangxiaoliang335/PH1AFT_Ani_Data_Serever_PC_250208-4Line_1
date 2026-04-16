@@ -1288,7 +1288,7 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 	if (GetDBInterface().IsConnected())
 	{
 		CString strDBCode, strDBGrade;
-		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strDBCode, strDBGrade))
+		if (GetDBInterface().QueryDefectCodeByBarcode(strPanelID, strDBCode, strDBGrade))
 		{
 			if (!strDBCode.IsEmpty() && !strDBGrade.IsEmpty())
 			{
@@ -1372,7 +1372,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	if (GetDBInterface().IsConnected())
 	{
 		CString strDBCode, strDBGrade;
-		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strDBCode, strDBGrade))
+		if (GetDBInterface().QueryDefectCodeByBarcode(strPanelID, strDBCode, strDBGrade))
 		{
 			if (!strDBCode.IsEmpty())
 			{
@@ -1460,7 +1460,7 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 	{
 		CString strCode, strGrade;
 		// 使用 FpcID 作为 Barcode 查询 IVS_LCD_InspectionResult
-		if (GetDBInterface().QueryDefectCodeByBarcode(strFpcID, strCode, strGrade))
+		if (GetDBInterface().QueryDefectCodeByBarcode(strPanelID, strCode, strGrade))
 		{
 			if (!strCode.IsEmpty())
 			{

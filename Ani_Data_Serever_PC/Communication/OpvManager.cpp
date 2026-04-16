@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 
 #if _SYSTEM_AMTAFT_
@@ -27,8 +27,19 @@ void COpvManager::SendOpvMessage(CString strMsg, int iPanelNum, int iCommand)
 
 	int iNum = iPanelNum;
 	CString strCommand = CStringSupport::FormatString(_T("%c%s%c"), _STX, strMsg, _ETX);
+	
+	// 调试日志：输出十六进制内容
+	CString strHex;
 	char *lpCommand = StringToChar(strCommand);
-	theApp.m_OpvSocketManager[iNum].WriteComm((BYTE*)lpCommand, strlen(lpCommand), 100L);
+	DWORD dwLen = strlen(lpCommand);
+	for (DWORD i = 0; i < dwLen && i < 128; i++)
+	{
+		strHex.AppendFormat(_T("%02X "), (BYTE)lpCommand[i]);
+	}
+	OpvLogMessage(CStringSupport::FormatString(_T("[MC -> OPV Ch%d] CMD=%d, Msg=[%s], Hex=[%s], Len=%d"),
+		iNum + 1, iCommand, strMsg, strHex, dwLen));
+	
+	theApp.m_OpvSocketManager[iNum].WriteComm((BYTE*)lpCommand, dwLen, 100L);
 	delete lpCommand;
 
 	m_csOpvMsg.Lock();
@@ -112,6 +123,14 @@ void COpvManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	GetSockName(addrin);
 
 	int Num = ntohs(addrin.GetPort()) == _ttoi(OPV1_PORT_NUM) ? CH_1 : CH_2;
+
+	// 调试日志：输出接收数据的十六进制内容
+	CString strHexRcv;
+	for (DWORD i = 0; i < dwCount && i < 256; i++)
+	{
+		strHexRcv.AppendFormat(_T("%02X "), (BYTE)lpBuffer[i]);
+	}
+	OpvLogMessage(CStringSupport::FormatString(_T("[VS -> MC Ch%d] RawHex=[%s], Len=%d"), Num + 1, strHexRcv, dwCount));
 
 	CStringArray responseTokens;
 	CStringSupport::GetTokenArray(strData, _ETX, responseTokens);

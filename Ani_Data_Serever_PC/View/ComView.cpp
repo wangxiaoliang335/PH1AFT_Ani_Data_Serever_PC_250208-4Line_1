@@ -9,6 +9,7 @@
 #include "ComView.h"
 #include "StringSupport.h"
 #include "DFSInfo.h"
+#include "DBInterface.h"
 
 #define IF_CHECK_TIMER 0
 #define TMR_SERVER_CONNECT_CHECK 1 //210422 yjlim
@@ -125,6 +126,7 @@ void CComView::OnInitialUpdate()
 
 	SetTimer(IF_CHECK_TIMER, 2000, NULL);
 	SetTimer(TMR_SERVER_CONNECT_CHECK, 3000, NULL);
+	SetTimer(TMR_DB_KEEPALIVE, 1800000, NULL);  // 30分钟心跳保活
 }
 
 void CComView::ChangeAlignList()
@@ -500,6 +502,12 @@ void CComView::OnTimer(UINT_PTR nIDEvent)
 	//		}
 	//	}
 	//}
+
+
+	if (nIDEvent == TMR_DB_KEEPALIVE)
+	{
+		GetDBInterface().KeepAlive();
+	}
 
 
 	CFormView::OnTimer(nIDEvent);

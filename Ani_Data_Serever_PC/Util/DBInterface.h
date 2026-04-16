@@ -35,6 +35,9 @@ public:
     // Check if connected
     BOOL IsConnected() const { return m_bConnected; }
 
+    // Keep alive - ping database to prevent timeout
+    BOOL KeepAlive();
+
     // ===== Inspection Result Operations =====
 
     // Insert inspection result
@@ -201,6 +204,9 @@ private:
 
     // Release environment and connection for current thread
     void ReleaseThreadConnection();
+
+    // Reconnect current thread's connection (after connection lost)
+    BOOL ReconnectThreadConnection();
 
     // Release all thread connections (call when shutting down)
     void ReleaseAllThreadConnections();

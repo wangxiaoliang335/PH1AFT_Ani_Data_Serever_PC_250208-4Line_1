@@ -1,5 +1,5 @@
 
-// MainFrm.h : CMainFrame Å¬·¡½ºÀÇ ÀÎÅÍÆäÀÌ½º
+// MainFrm.h : CMainFrame Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½
 //
 
 #pragma once
@@ -26,10 +26,10 @@ protected:
 	CMainFrame();
 	DECLARE_DYNCREATE(CMainFrame)
 
-// Æ¯¼ºÀÔ´Ï´Ù.
+// Æ¯ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 
-// ÀÛ¾÷ÀÔ´Ï´Ù.
+// ï¿½Û¾ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 
 	CTopCtrl m_cTopCtrl;
@@ -52,11 +52,11 @@ public:
 
 	CView *m_pMainView;
 
-	// ÀçÁ¤ÀÇÀÔ´Ï´Ù.
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 
-	// ±¸ÇöÀÔ´Ï´Ù.
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 	virtual ~CMainFrame();
 #ifdef _DEBUG
@@ -64,10 +64,10 @@ public:
 	virtual void Dump(CDumpContext& dc) const;
 #endif
 
-protected:  // ÄÁÆ®·Ñ ¸ðÀ½ÀÌ Æ÷ÇÔµÈ ¸â¹öÀÔ´Ï´Ù.
+protected:  // ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ôµï¿½ ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 	CToolBar          m_wndToolBar;
 
-	// »ý¼ºµÈ ¸Þ½ÃÁö ¸Ê ÇÔ¼ö
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Þ½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ô¼ï¿½
 protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	DECLARE_MESSAGE_MAP()

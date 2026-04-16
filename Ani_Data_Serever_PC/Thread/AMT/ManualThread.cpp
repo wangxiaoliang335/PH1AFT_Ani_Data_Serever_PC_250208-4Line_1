@@ -937,8 +937,8 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 	strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 
 	theApp.m_pEqIf->m_pMNetH->GetPlcWordData(eWordType_MStageABufferTrayINFlag + iChNum, &bBufferTrayFlag);
-	
 
+	theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[%s] 11 OPV Start Panel [%s][%s]"), ULD_PG_IndexName[iChNum], strPanel, strFpcID));
 	if (strFpcID.IsEmpty())
 	{
 		if (theApp.m_PanelTestStart)
@@ -955,7 +955,10 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 		}
 	}
 	if (strPanel.IsEmpty())
+	{
 		strPanel = strFpcID;
+		//strPanel = "AHF542705AAE3";
+	}
 
 	theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[%s] OPV Start Panel [%s][%s]"), ULD_PG_IndexName[iChNum], strPanel, strFpcID));
 	CString strMsg;

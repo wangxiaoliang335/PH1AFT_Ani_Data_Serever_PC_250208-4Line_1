@@ -1,5 +1,5 @@
 
-// Ani_Data_Serever_PCView.h : CAni_Data_Serever_PCView Å¬·¡½ºÀÇ ÀÎÅÍÆäÀÌ½º
+// Ani_Data_Serever_PCView.h : CAni_Data_Serever_PCView Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½
 //
 
 #pragma once
@@ -31,11 +31,11 @@ class CMainFrame;
 
 class CAni_Data_Serever_PCView : public CFormView
 {
-protected: // serialization¿¡¼­¸¸ ¸¸µé¾îÁý´Ï´Ù.
+protected: // serializationï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.
 	CAni_Data_Serever_PCView();
 	DECLARE_DYNCREATE(CAni_Data_Serever_PCView)
 
-	// Æ¯¼ºÀÔ´Ï´Ù.
+	// Æ¯ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 
 #if _SYSTEM_AMTAFT_
@@ -60,17 +60,17 @@ public:
 
 	enum{ IDD = MAIN_VIEW };
 
-	// ÀÛ¾÷ÀÔ´Ï´Ù.
+	// ï¿½Û¾ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 
-	// ÀçÁ¤ÀÇÀÔ´Ï´Ù.
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV Áö¿øÀÔ´Ï´Ù.
-	virtual void OnInitialUpdate(); // »ý¼º ÈÄ Ã³À½ È£ÃâµÇ¾ú½À´Ï´Ù.
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
+	virtual void OnInitialUpdate(); // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ã³ï¿½ï¿½ È£ï¿½ï¿½Ç¾ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.
 
-	// ±¸ÇöÀÔ´Ï´Ù.
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 public:
 	virtual ~CAni_Data_Serever_PCView();
 #ifdef _DEBUG
@@ -80,7 +80,7 @@ public:
 
 protected:
 
-	// »ý¼ºµÈ ¸Þ½ÃÁö ¸Ê ÇÔ¼ö
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Þ½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ô¼ï¿½
 protected:
 	DECLARE_MESSAGE_MAP()
 

@@ -289,6 +289,148 @@ void CDBInterface::ReleaseThreadConnection()
     TlsSetValue(sm_nTlsIndex, nullptr);
 }
 
+BOOL CDBInterface::KeepAlive()
+{
+    if (!EnsureThreadConnection())
+    {
+        return FALSE;
+    }
+
+    SQLHDBC hConn = GetThreadConnection();
+    if (!hConn)
+    {
+        return FALSE;
+    }
+
+    SQLHSTMT hStmt = SQL_NULL_HSTMT;
+    SQLRETURN ret;
+
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        return FALSE;
+    }
+
+    // 使用不带结果的查询，防止连接断开
+    ret = SQLExecDirect(hStmt, (SQLWCHAR*)_T("SELECT 1"), SQL_NTS);
+
+    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("[DB] KeepAlive failed, trying reconnect...\n"));
+        theApp.m_pTestLog->Info(_T("[DB] KeepAlive failed, reconnecting..."));
+
+        if (ReconnectThreadConnection())
+        {
+            theApp.m_pTestLog->Info(_T("[DB] KeepAlive reconnection successful"));
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TLS: Reconnect current thread's database connection (after connection lost)
+///////////////////////////////////////////////////////////////////////////////
+BOOL CDBInterface::ReconnectThreadConnection()
+{
+    if (sm_nTlsIndex == TLS_OUT_OF_INDEXES)
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - TLS not initialized\n"));
+        return FALSE;
+    }
+
+    // Get existing thread connection data
+    ThreadDBConnection* pThreadDB = static_cast<ThreadDBConnection*>(TlsGetValue(sm_nTlsIndex));
+    if (!pThreadDB)
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - No thread data found, trying InitThreadConnection\n"));
+        return InitThreadConnection();
+    }
+
+    // Close existing connection
+    if (pThreadDB->hConnection != SQL_NULL_HDBC)
+    {
+        SQLDisconnect(pThreadDB->hConnection);
+        SQLFreeHandle(SQL_HANDLE_DBC, pThreadDB->hConnection);
+        pThreadDB->hConnection = SQL_NULL_HDBC;
+        TRACE(_T("DBInterface::ReconnectThreadConnection - Old connection disconnected\n"));
+    }
+
+    if (pThreadDB->hEnv != SQL_NULL_HENV)
+    {
+        SQLFreeHandle(SQL_HANDLE_ENV, pThreadDB->hEnv);
+        pThreadDB->hEnv = SQL_NULL_HENV;
+    }
+
+    // Get connection string
+    CString strConnString;
+    {
+        EnterCriticalSection(&m_csDB);
+        strConnString = m_strMainConnString;
+        LeaveCriticalSection(&m_csDB);
+    }
+
+    if (strConnString.IsEmpty())
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - No connection string available\n"));
+        return FALSE;
+    }
+
+    SQLRETURN ret;
+
+    // Allocate new environment handle
+    ret = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HENV, &pThreadDB->hEnv);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - Failed to allocate environment handle\n"));
+        return FALSE;
+    }
+
+    ret = SQLSetEnvAttr(pThreadDB->hEnv, SQL_ATTR_ODBC_VERSION, (void*)SQL_OV_ODBC3, 0);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - Failed to set ODBC version\n"));
+        SQLFreeHandle(SQL_HANDLE_ENV, pThreadDB->hEnv);
+        pThreadDB->hEnv = SQL_NULL_HENV;
+        return FALSE;
+    }
+
+    ret = SQLAllocHandle(SQL_HANDLE_DBC, pThreadDB->hEnv, &pThreadDB->hConnection);
+    if (!SQL_SUCCEEDED(ret))
+    {
+        TRACE(_T("DBInterface::ReconnectThreadConnection - Failed to allocate connection handle\n"));
+        SQLFreeHandle(SQL_HANDLE_ENV, pThreadDB->hEnv);
+        pThreadDB->hEnv = SQL_NULL_HENV;
+        return FALSE;
+    }
+
+    SQLSetConnectAttr(pThreadDB->hConnection, SQL_LOGIN_TIMEOUT, (SQLPOINTER)10, 0);
+
+    ret = SQLDriverConnect(pThreadDB->hConnection, NULL,
+        (SQLWCHAR*)strConnString.GetString(), SQL_NTS,
+        NULL, 0, NULL, SQL_DRIVER_COMPLETE);
+
+    if (!SQL_SUCCEEDED(ret))
+    {
+        m_strLastError = GetODBCError(SQL_HANDLE_DBC, pThreadDB->hConnection);
+        TRACE(_T("DBInterface::ReconnectThreadConnection - Connection failed - %s\n"), m_strLastError);
+        SQLFreeHandle(SQL_HANDLE_DBC, pThreadDB->hConnection);
+        SQLFreeHandle(SQL_HANDLE_ENV, pThreadDB->hEnv);
+        pThreadDB->hConnection = SQL_NULL_HDBC;
+        pThreadDB->hEnv = SQL_NULL_HENV;
+        pThreadDB->bConnected = FALSE;
+        return FALSE;
+    }
+
+    pThreadDB->bConnected = TRUE;
+    TRACE(_T("DBInterface::ReconnectThreadConnection - Success!\n"));
+    return TRUE;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Release all thread connections (call when shutting down)
 ///////////////////////////////////////////////////////////////////////////////
@@ -599,6 +741,47 @@ BOOL CDBInterface::ExecuteQuery(const CString& strSQL, SQLHSTMT& hStmt)
     {
         m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
         TRACE(_T("DBInterface: SQL Query Error - %s\nSQL: %s\n"), m_strLastError, strSQL);
+
+        // 检测 MySQL server has gone away，自动重连
+        if (m_strLastError.Find(_T("MySQL server has gone away")) >= 0 ||
+            m_strLastError.Find(_T("Lost connection")) >= 0 ||
+            m_strLastError.Find(_T("server has gone away")) >= 0)
+        {
+            TRACE(_T("[DB] MySQL connection lost, trying to reconnect...\n"));
+            theApp.m_pTestLog->Info(_T("[DB] MySQL connection lost, reconnecting..."));
+
+            // 重建当前线程的连接
+            if (ReconnectThreadConnection())
+            {
+                TRACE(_T("[DB] Reconnection successful, retrying query...\n"));
+                theApp.m_pTestLog->Info(_T("[DB] Reconnection successful, retrying query"));
+
+                // 重试 SQL
+                hConn = GetThreadConnection();
+                if (hConn)
+                {
+                    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
+                    if (SQL_SUCCEEDED(ret))
+                    {
+                        ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
+                        if (SQL_SUCCEEDED(ret))
+                        {
+                            TRACE(_T("[DB] Retry successful!\n"));
+                            return TRUE;
+                        }
+                        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+                        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+                        hStmt = SQL_NULL_HSTMT;
+                    }
+                }
+            }
+            else
+            {
+                TRACE(_T("[DB] Reconnection failed!\n"));
+                theApp.m_pTestLog->Info(_T("[DB] Reconnection failed"));
+            }
+        }
+
         SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
         hStmt = SQL_NULL_HSTMT;
         return FALSE;
@@ -1348,7 +1531,8 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
     result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
     result.GUID = GetColumnString(hStmt, 2);
     result.ScreenID = GetColumnString(hStmt, 3);
-    result.UniqueID = GetColumnString(hStmt, 19);      // 19: UniqueID
+    result.PlatformID = GetColumnInt(hStmt, 5);    // 5: PlatformID
+    result.UniqueID = GetColumnString(hStmt, 19);   // 19: UniqueID
     result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
     result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
     result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI

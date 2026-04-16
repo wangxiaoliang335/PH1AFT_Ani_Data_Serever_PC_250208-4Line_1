@@ -1712,15 +1712,27 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 				}
 				else
 				{
-					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage MoveFile: %s -> %s"), strTempFilePath, snedFilePath);
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
 					if (FileExists(snedFilePath))
 					{
 						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
 						::DeleteFile(snedFilePath);
 					}
-					if (!::MoveFile(strTempFilePath, snedFilePath))
+					// 使用 CopyFile + DeleteFile 替代 MoveFile（保留源文件）
+					BOOL bCopySuccess = FALSE;
+					for (int nRetry = 0; nRetry < 3; nRetry++)
 					{
-						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage MoveFile FAILED: src=%s, dest=%s, error=%d"), 
+						if (::CopyFile(strTempFilePath, snedFilePath, FALSE))
+						{
+							bCopySuccess = TRUE;
+							break;
+						}
+						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile retry %d: %s"), nRetry + 1, strTempFilePath);
+						Delay(1, TRUE);
+					}
+					if (!bCopySuccess)
+					{
+						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage CopyFile FAILED: src=%s, dest=%s, error=%d"), 
 							strTempFilePath, snedFilePath, GetLastError());
 					}
 				}
@@ -1741,15 +1753,27 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 			}
 			else
 			{
-				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage MoveFile (last): %s -> %s"), strTempFilePath, snedFilePath);
+				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile (last): %s -> %s"), strTempFilePath, snedFilePath);
 				if (FileExists(snedFilePath))
 				{
 					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
 					::DeleteFile(snedFilePath);
 				}
-				if (!::MoveFile(strTempFilePath, snedFilePath))
+				// 使用 CopyFile + DeleteFile 替代 MoveFile（保留源文件）
+				BOOL bCopySuccess = FALSE;
+				for (int nRetry = 0; nRetry < 3; nRetry++)
 				{
-					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage MoveFile FAILED (last): src=%s, dest=%s, error=%d"), 
+					if (::CopyFile(strTempFilePath, snedFilePath, FALSE))
+					{
+						bCopySuccess = TRUE;
+						break;
+					}
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile retry %d: %s"), nRetry + 1, strTempFilePath);
+					Delay(1, TRUE);
+				}
+				if (!bCopySuccess)
+				{
+					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage CopyFile FAILED (last): src=%s, dest=%s, error=%d"), 
 						strTempFilePath, snedFilePath, GetLastError());
 				}
 			}
@@ -1799,15 +1823,27 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 				}
 				else
 				{
-					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 MoveFile: %s -> %s"), strTempFilePath, snedFilePath);
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
 					if (FileExists(snedFilePath))
 					{
 						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2: dest exists, delete first: %s"), snedFilePath);
 						::DeleteFile(snedFilePath);
 					}
-					if (!::MoveFile(strTempFilePath, snedFilePath))
+					// 使用 CopyFile + DeleteFile 替代 MoveFile（保留源文件）
+					BOOL bCopySuccess = FALSE;
+					for (int nRetry = 0; nRetry < 3; nRetry++)
 					{
-						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 MoveFile FAILED: src=%s, dest=%s, error=%d"), 
+						if (::CopyFile(strTempFilePath, snedFilePath, FALSE))
+						{
+							bCopySuccess = TRUE;
+							break;
+						}
+						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile retry %d: %s"), nRetry + 1, strTempFilePath);
+						Delay(1, TRUE);
+					}
+					if (!bCopySuccess)
+					{
+						theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 CopyFile FAILED: src=%s, dest=%s, error=%d"), 
 							strTempFilePath, snedFilePath, GetLastError());
 					}
 				}
@@ -1828,15 +1864,27 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 			}
 			else
 			{
-				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 MoveFile (last): %s -> %s"), strTempFilePath, snedFilePath);
+				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile (last): %s -> %s"), strTempFilePath, snedFilePath);
 				if (FileExists(snedFilePath))
 				{
 					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2: dest exists, delete first: %s"), snedFilePath);
 					::DeleteFile(snedFilePath);
 				}
-				if (!::MoveFile(strTempFilePath, snedFilePath))
+				// 使用 CopyFile + DeleteFile 替代 MoveFile（保留源文件）
+				BOOL bCopySuccess = FALSE;
+				for (int nRetry = 0; nRetry < 3; nRetry++)
 				{
-					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 MoveFile FAILED (last): src=%s, dest=%s, error=%d"), 
+					if (::CopyFile(strTempFilePath, snedFilePath, FALSE))
+					{
+						bCopySuccess = TRUE;
+						break;
+					}
+					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile retry %d: %s"), nRetry + 1, strTempFilePath);
+					Delay(1, TRUE);
+				}
+				if (!bCopySuccess)
+				{
+					theApp.m_pFTPLog->Error(_T("[DFS] CopyImage2 CopyFile FAILED (last): src=%s, dest=%s, error=%d"), 
 						strTempFilePath, snedFilePath, GetLastError());
 				}
 			}
@@ -2225,8 +2273,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 		// CAM_INSPECT=2（与旧 Vision PC 一致）
 		item.strCAM_INSPECT = _T("2");
 
-		// Zone 为空（旧 Vision PC Zone 列留空）
-		item.strZone = _T("");
+		// Zone = PlatformID（从 IVS_LCD_InspectionResult.PlatformID 获取）
+		item.strZone = CStringSupport::FormatString(_T("%d"), inspResult.PlatformID);
 
 		item.strInspName = _T("AOI");
 
@@ -2271,7 +2319,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			summaryItem.strY = _T("0");
 			summaryItem.strSIZE = _T("0");
 			summaryItem.strCAM_INSPECT = _T("2");
-			summaryItem.strZone = _T("");
+			// Zone = PlatformID（从 IVS_LCD_InspectionResult.PlatformID 获取）
+			summaryItem.strZone = CStringSupport::FormatString(_T("%d"), inspResult.PlatformID);
 			summaryItem.strInspName = _T("AOI");
 			m_DefectDataList.push_back(summaryItem);
 		}
@@ -2311,7 +2360,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 
 	if (m_DefectDataList.empty())
 	{
-		sFile.WriteString(_T(",,,,,,,,,,,\n"));
+		sFile.WriteString(_T(",,,,,,,,,,,,\n"));  // 12列（含Zone）
 	}
 	else
 	{
@@ -2332,7 +2381,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			}
 
 			CString strDefectLine;
-			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,\n"),
+			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,%s\n"),
 				(LPCTSTR)item.strPANEL_ID,
 				ii + 1,
 				(LPCTSTR)item.strDEFECT_TYPE,
@@ -2340,7 +2389,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				(LPCTSTR)item.strDEFECT_CODE,
 				(LPCTSTR)item.strDEFECT_GRADE,
 				(LPCTSTR)item.strIMAGE_DATA,
-				fX, fY, fSize);
+				fX, fY, fSize,
+				(LPCTSTR)item.strZone);
 			sFile.WriteString(strDefectLine);
 		}
 	}
@@ -2364,12 +2414,16 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			SDFSDefectDataBegin& item = m_DefectDataList[ii];
 
 			// 坐标：优先使用 defectList（真实缺陷坐标），否则使用 m_DefectDataList（汇总坐标 0）
-			double fX = 0.0, fY = 0.0;
+			// DATA_X1/DATA_X2：缺陷起始/结束 X = Pos_x ± Pos_width/2
+			// GATE_Y1/GATE_Y2：缺陷起始/结束 Y = Pos_y ± Pos_height/2
+			double fX1 = 0.0, fY1 = 0.0, fX2 = 0.0, fY2 = 0.0;
 			CString strImgFile;
 			if (ii < (size_t)defectList.size())
 			{
-				fX = defectList[ii].Pos_x;
-				fY = defectList[ii].Pos_y;
+				fX1 = defectList[ii].Pos_x - defectList[ii].Pos_width / 2.0;
+				fY1 = defectList[ii].Pos_y - defectList[ii].Pos_height / 2.0;
+				fX2 = defectList[ii].Pos_x + defectList[ii].Pos_width / 2.0;
+				fY2 = defectList[ii].Pos_y + defectList[ii].Pos_height / 2.0;
 				if (!defectList[ii].ImagePath.IsEmpty())
 				{
 					int nLastSlash = max(defectList[ii].ImagePath.ReverseFind('\\'),
@@ -2383,8 +2437,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			else
 			{
 				// 汇总缺陷记录：坐标为空，使用 strX/strY（均为 "0"）
-				if (!item.strX.IsEmpty()) fX = _ttof(item.strX);
-				if (!item.strY.IsEmpty()) fY = _ttof(item.strY);
+				if (!item.strX.IsEmpty()) fX1 = fX2 = _ttof(item.strX);
+				if (!item.strY.IsEmpty()) fY1 = fY2 = _ttof(item.strY);
 			}
 
 			// FPC_ID：从 inspResult.ScreenID 获取
@@ -2398,7 +2452,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				(LPCTSTR)item.strDEFECT_GRADE,
 				(LPCTSTR)item.strDEFECT_CODE,
 				(LPCTSTR)item.strDEFECT_PTRN,
-				fX, fY, fX, fY,
+				fX1, fY1, fX2, fY2,
 				(LPCTSTR)strImgFile);
 			sFile.WriteString(strOpvLine);
 		}

@@ -437,19 +437,19 @@ void CPgIndex::ZonePanelCheck(int iNum)
 
 		if (strFpcID.IsEmpty() == FALSE)
 		{
-			theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsNotEmpty, Execute PanelCheck Type=%d"), m_strIndexName, ii + 1, iNum));
+			//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsNotEmpty, Execute PanelCheck Type=%d"), m_strIndexName, ii + 1, iNum));
 			switch (iNum)
 			{
 			case ContactPanelCheck: 
-				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ContactPanelCheck Complete, Set AZoneContactPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ContactPanelCheck Complete, Set AZoneContactPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneContactPcReceiver + m_iZoneNum, OffSet_0, TRUE); 
 				break;
 			case TouchPanelCheck: 
-				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] TouchPanelCheck Complete, Set AZoneTouchPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] TouchPanelCheck Complete, Set AZoneTouchPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AZoneTouchPcReceiver + m_iZoneNum, OffSet_0, TRUE); 
 				break;
 			case PreGammaPanelCheck: 
-				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] PreGammaPanelCheck Complete, Set PreGammaPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
+				//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] PreGammaPanelCheck Complete, Set PreGammaPcReceiver = TRUE, FpcID = %s"), m_strIndexName, strFpcID));
 				theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_PreGammaPcReceiver, OffSet_0, TRUE); 
 				break;
 			}

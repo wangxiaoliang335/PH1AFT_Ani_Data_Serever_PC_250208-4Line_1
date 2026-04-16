@@ -59,6 +59,7 @@ const int WM_USER_FFU_RECEIVE = WM_USER + 3;
 const int TMR_MAIN_INSPECT_INFO = 509;
 const int TMR_MAIN_DEFECT_INFO = 510;
 const int TMR_MSG_BOX = 511;
+const int TMR_DB_KEEPALIVE = 512;  // 数据库心跳保活定时器
 
 #define CREATE_DLG(nSys,ptr, Class, nIDD, pWnd, nShow)	if(nSys == TRUE && ptr == NULL) \
 																{ ptr = new Class; \

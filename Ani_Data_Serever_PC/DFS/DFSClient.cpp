@@ -902,19 +902,19 @@ void CDFSClient::RunDfsUploadThread()
 								fileFind.Close();
 								theApp.m_pFTPLog->Info(_T("[DFS] Grade images copied: count=%d"), nGradeImageCount);
 
-								// 复制 MarkImg.jpg (Mark 标记图)
+								// 复制 MarkImg.jpg (Mark 标记图)，重命名为 AddsrcImageADD.jpg
 								CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
-								CString strMarkDest = strAoiImagePath + _T("\\MarkImg.jpg");
+								CString strMarkDest = strAoiImagePath + _T("\\AddsrcImageADD.jpg");
 								if (FileExists(strMarkSrc))
 								{
 									if (!::CopyFile(strMarkSrc, strMarkDest, FALSE))
 									{
-										theApp.m_pFTPLog->Error(_T("[DFS] MarkImage CopyFile FAILED: src=%s, dest=%s, error=%d"), 
+										theApp.m_pFTPLog->Error(_T("[DFS] AddsrcImageADD CopyFile FAILED: src=%s, dest=%s, error=%d"), 
 											strMarkSrc, strMarkDest, GetLastError());
 									}
 									else
 									{
-										theApp.m_pFTPLog->Info(_T("[DFS] Mark image copied: %s -> %s"), strMarkSrc, strMarkDest);
+										theApp.m_pFTPLog->Info(_T("[DFS] AddsrcImageADD copied: %s -> %s"), strMarkSrc, strMarkDest);
 									}
 								}
 							}
@@ -1167,12 +1167,6 @@ void CDFSClient::RunDfsUploadThread()
 									else
 									{
 										theApp.m_pFTPLog->Info(_T("[DFS] OPV Image copied: %s -> %s"), strSrc, strDest);
-										// 复制成功后删除源文件
-										if (!::DeleteFile(strSrc))
-										{
-											int nDelErr = GetLastError();
-											theApp.m_pFTPLog->Debug(_T("[DFS] OPV Image DeleteFile failed (ignored): %s, error=%d"), strSrc, nDelErr);
-										}
 									}
 									if (theApp.m_bDFSTestMode == TRUE)
 										strDest.Replace(_T("D:\\TEST\\"), _T("/MODULE/"));
@@ -1188,8 +1182,8 @@ void CDFSClient::RunDfsUploadThread()
 									theApp.m_pFTPLog->Info2(_T("Vision Not exist image file"));
 							}
 
-							// ===== 额外上传 L255.bmp 和 MarkImg.jpg =====
-							CString strExtraImgList[2] = { _T("L255.bmp"), _T("MarkImg.jpg") };
+							// ===== 额外上传 L255.bmp 和 AddsrcImageADD.jpg =====
+							CString strExtraImgList[2] = { _T("L255.bmp"), _T("AddsrcImageADD.jpg") };
 							for (int n = 0; n < 2; n++)
 							{
 								CString strImgName = strExtraImgList[n];
@@ -1233,8 +1227,6 @@ void CDFSClient::RunDfsUploadThread()
 									else
 									{
 										theApp.m_pFTPLog->Info(_T("[DFS] Extra Image copied: %s -> %s"), strSrc, strDest);
-										// 复制成功后删除源文件
-										::DeleteFile(strSrc);
 									}
 								}
 								else
@@ -1290,16 +1282,10 @@ void CDFSClient::RunDfsUploadThread()
 								else
 								{
 									theApp.m_pFTPLog->Info(_T("[DFS] Layout Image copied: %s -> %s"), strSrc, strDest2);
-									// 复制成功后删除源文件
-									if (!::DeleteFile(strSrc))
-									{
-										int nDelErr = GetLastError();
-										theApp.m_pFTPLog->Debug(_T("[DFS] Layout Image DeleteFile failed (ignored): %s, error=%d"), strSrc, nDelErr);
-									}
 								}
 								
 
-								strSrc = strSumImagePath;
+							strSrc = strSumImagePath;
 								//strDest = strImageFilePath;
 
 								DfsInfo.CopyImage2(strSrc, strDest);
@@ -1503,6 +1489,8 @@ void CDFSClient::RunFtpUploadThread()
 	CString strFpcID, strPanelID;
 	CString strSumImagePath, strTemp1;
 
+	theApp.m_pFTPLog->Info(_T("[FTP] RunFtpUploadThread START"));
+
 	while (::WaitForSingleObject(m_hQuit, 1000) != WAIT_OBJECT_0)
 	{
 		if (!m_transferFileList.empty())
@@ -1521,14 +1509,21 @@ void CDFSClient::RunFtpUploadThread()
 				dfsData = m_transferFileList.front();
 				strPanelID = dfsData.m_PanelID;
 				strFpcID = dfsData.m_FpcID;
-				theApp.m_pFTPLog->Debug(_T("DFS START PanelID : %s, FPCID : %s,"), strPanelID, strFpcID);
+				theApp.m_pFTPLog->Debug(_T("[FTP] Queue front - PanelID : %s, FPCID : %s, TypeNum=%d, StageNum=%d, ChNum=%s, Lumitop=%s"),
+					strPanelID, strFpcID, dfsData.m_TypeNum, dfsData.m_StageNum, dfsData.m_ChNum, dfsData.m_Lumitop);
 				m_csLock.Unlock();
 
 				if (strPanelID.IsEmpty() == FALSE)
 				{
+					theApp.m_pFTPLog->Info(_T("[FTP] Processing PanelID: %s, FPCID: %s"), strPanelID, strFpcID);
+
 					DfsInfo.IndexZoneInspResultInfo(strPanelID);
+					theApp.m_pFTPLog->Debug(_T("[FTP] IndexZoneInspResultInfo completed for PanelID: %s"), strPanelID);
+
 					if (!DfsInfo.VisionLoadPanelDFSInfo(strPanelID, Machine_AOI)) // 이건 OPV .txt 파일 용입니다.
-						theApp.m_pFTPLog->Info(_T("OPV Vision Dfs File Path Error : %s,"), strPanelID);
+						theApp.m_pFTPLog->Info(_T("[FTP] OPV Vision Dfs File Path Error : %s,"), strPanelID);
+					else
+						theApp.m_pFTPLog->Debug(_T("[FTP] VisionLoadPanelDFSInfo SUCCESS for PanelID: %s"), strPanelID);
 
 					if (theApp.m_bSameDefectMode == TRUE)
 					{
@@ -1543,6 +1538,8 @@ void CDFSClient::RunFtpUploadThread()
 							if (!CheckSameAOIDefect(DefectInfo.m_strChNum, DefectInfo))
 								theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, TRUE);
 						}
+						theApp.m_pFTPLog->Debug(_T("[FTP] SameDefectMode check completed, defect count=%d"), 
+							(int)DfsInfo.m_OpvDataList[Machine_AOI].size());
 					}
 
 					OpvInfo.m_Panel_Info.strTime = GetDateString4();
@@ -1558,6 +1555,8 @@ void CDFSClient::RunFtpUploadThread()
 					OpvInfo.m_Panel_Info.strViewingResult = DfsInfo.m_strViewingResult;
 					OpvInfo.m_Panel_Info.strTpResult = dfsData.m_TpResult;
 					OpvInfo.m_Panel_Info.strLumitopResult = DfsInfo.m_strLumitopResult;
+					theApp.m_pFTPLog->Debug(_T("[FTP] OpvInfo Panel_Info set: VisionResult=%s, ViewingResult=%s, LumitopResult=%s"),
+						OpvInfo.m_Panel_Info.strVisionResult, OpvInfo.m_Panel_Info.strViewingResult, OpvInfo.m_Panel_Info.strLumitopResult);
 
 					//>> Summery_data 220112 psh
 					CString strFilePath;
@@ -1570,6 +1569,8 @@ void CDFSClient::RunFtpUploadThread()
 					ini[_T("Sumeery_data")][_T("PREGAMMA")] = dfsData.m_PreGamma;
 					ini[_T("Sumeery_data")][_T("TP")] = dfsData.m_TpResult;
 					ini[_T("Sumeery_data")][_T("LUMITOP")] = dfsData.m_Lumitop;
+					theApp.m_pFTPLog->Debug(_T("[FTP] Summary data written: AOI=%s, TP=%s, LUMITOP=%s"), 
+						dfsData.m_AOIInpsect, dfsData.m_TpResult, dfsData.m_Lumitop);
 
 					if (theApp.m_iMachineType == SetAMT)
 					{
@@ -1601,6 +1602,8 @@ void CDFSClient::RunFtpUploadThread()
 						else
 							OpvInfo.m_Panel_Info.strDefect_Result = _T("G");
 					}
+					theApp.m_pFTPLog->Debug(_T("[FTP] Defect_Result=%s, PreGammaContactStatus=%s"), 
+						OpvInfo.m_Panel_Info.strDefect_Result, OpvInfo.m_Panel_Info.strPreGammaContactStatus);
 
 					if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsContactNG || _ttoi(OpvInfo.m_Panel_Info.strTpResult) == m_dfsTpNG)
 						DfsInfo.AddDefectCodeResult(strPanelID, _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus), _ttoi(OpvInfo.m_Panel_Info.strTpResult), Machine_AOI);
@@ -1621,16 +1624,22 @@ void CDFSClient::RunFtpUploadThread()
 						ii++;
 						OpvInfo.m_Panel_Defect.push_back(defectInfo);
 					}
+					theApp.m_pFTPLog->Debug(_T("[FTP] Defect list built, count=%d"), 
+						(int)DfsInfo.m_OpvDataList[Machine_AOI].size());
 
 					strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + _T("\\") + strPanelID;
 					//strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + strPanelID;
 					CreateFolders(strTemp1);
+					theApp.m_pFTPLog->Debug(_T("[FTP] OPV folder created: %s"), strTemp1);
+
 					strSumImagePath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanelID + _T("\\AOI\\Image");
 					strOpvSrc = strSumImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
 					strOpvDest = strTemp1 + _T("\\") + _T("AddsrcImageADD.jpg");
+					theApp.m_pFTPLog->Debug(_T("[FTP] Image copy path: src=%s, dest=%s"), strOpvSrc, strOpvDest);
 
 					strTemp1 = strTemp1 + _T("\\") + strPanelID + _T(".txt");
 					OpvInfo.SetSaveFile(strTemp1);
+					theApp.m_pFTPLog->Debug(_T("[FTP] OPV txt file path: %s"), strTemp1);
 
 					::CopyFile(strOpvSrc, strOpvDest, FALSE); //image 업로드
 					//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
