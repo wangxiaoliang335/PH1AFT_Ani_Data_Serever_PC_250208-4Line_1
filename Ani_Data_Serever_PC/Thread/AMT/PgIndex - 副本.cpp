@@ -110,11 +110,10 @@ void CPgIndex::ThreadRun()
 			static BOOL s_bLastContactPlcSend = FALSE;
 			if (bPlcSend != s_bLastContactPlcSend)
 			{
-				//if (bPlcSend)
-				//	theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
-				//else
-				//	theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
-				theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=%d, Call ZonePanelCheck"), m_strIndexName, bPlcSend);
+				if (bPlcSend)
+					theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+				else
+					theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
 				s_bLastContactPlcSend = bPlcSend;
 			}
 
@@ -407,6 +406,10 @@ void CPgIndex::ZonePanelCheck(int iNum)
 	FpcIDData pFpcData;
 	CString strPanel, strFpcID;
 
+	// 静态变量：记录每个 Jig 的上一次 FpcID，用于检测变化
+	static CString s_strLastFpcID[PanelMaxCount] = { _T(""), _T(""), _T(""), _T("") };
+	static BOOL s_bLoggedOnce[PanelMaxCount] = { FALSE, FALSE, FALSE, FALSE };  // 首次已记录标志
+
 	for (int ii = 0; ii < PanelMaxCount; ii++)
 	{
 		if (iNum == PreGammaPanelCheck)
@@ -426,17 +429,46 @@ void CPgIndex::ZonePanelCheck(int iNum)
 			strFpcID = CStringSupport::ToWString(pFpcData.m_FpcIDData, sizeof(pFpcData.m_FpcIDData));
 		}
 
-		if (strPanel.IsEmpty())
+		// 只在 FpcID 发生变化时输出日志，避免刷屏
+		BOOL bFpcIdChanged = (strFpcID != s_strLastFpcID[ii]);
+		s_strLastFpcID[ii] = strFpcID;
+
+		// 输出条件：FpcID 变化 或 首次有数据且还未记录过
+		BOOL bShouldLog = FALSE;
+		if (bFpcIdChanged)
 		{
-			strPanel = strFpcID;
-			//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel IsEmpty, Use strFpcID = %s"), m_strIndexName, ii + 1, strFpcID));
-		}
-		else
-		{
-			//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel = %s, strFpcID = %s"), m_strIndexName, ii + 1, strPanel, strFpcID));
+			// 数据变化时输出
+			if (!strFpcID.IsEmpty())
+			{
+				// 有新数据：输出 Panel 和 FpcID
+				bShouldLog = TRUE;
+			}
+			else if (s_bLoggedOnce[ii])
+			{
+				// 数据从有变空：输出一次 "Skip"
+				bShouldLog = TRUE;
+				s_bLoggedOnce[ii] = FALSE;
+			}
 		}
 
-		if (strFpcID.IsEmpty() == FALSE)
+		if (bShouldLog)
+		{
+			if (strFpcID.IsEmpty())
+			{
+				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsEmpty, Skip PanelCheck"), m_strIndexName, ii + 1));
+			}
+			else
+			{
+				if (strPanel.IsEmpty())
+					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel IsEmpty, Use strFpcID = %s"), m_strIndexName, ii + 1, strFpcID));
+				else
+					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strPanel = %s, strFpcID = %s"), m_strIndexName, ii + 1, strPanel, strFpcID));
+				
+				s_bLoggedOnce[ii] = TRUE;
+			}
+		}
+
+		if (!strFpcID.IsEmpty())
 		{
 			//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsNotEmpty, Execute PanelCheck Type=%d"), m_strIndexName, ii + 1, iNum));
 			switch (iNum)
@@ -455,10 +487,6 @@ void CPgIndex::ZonePanelCheck(int iNum)
 				break;
 			}
 			break;
-		}
-		else
-		{
-			//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] ZonePanelCheck Jig %d: strFpcID IsEmpty, Skip PanelCheck"), m_strIndexName, ii + 1));
 		}
 	}
 }

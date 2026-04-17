@@ -1536,6 +1536,11 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
     result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
     result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
     result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
+    // 30: GridImageXLen, 31: GridImageYLen, 32: PanelPhysicalXLen, 33: PanelPhysicalYLen
+    result.GridImageXLen = GetColumnInt(hStmt, 30);
+    result.GridImageYLen = GetColumnInt(hStmt, 31);
+    result.PanelPhysicalXLen = GetColumnDouble(hStmt, 32);
+    result.PanelPhysicalYLen = GetColumnDouble(hStmt, 33);
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;

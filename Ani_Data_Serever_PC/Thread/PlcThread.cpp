@@ -3194,10 +3194,10 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	else
 		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP END iType : Machine_ULD"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
 
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS_SendPlcDefectCode Start"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS_SendPlcDefectCode Start"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
 	SendPlcDefectCode(iNum, pDfsDateValue, iType);
 
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS_SendPlcDefectCode End"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS_SendPlcDefectCode End"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
 	//>> 0617
 	/*CString strPath, strFilePath, strShift;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
@@ -3803,7 +3803,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 			else
 				strCodeGrade = _T("");
 		}
-		theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
+		//theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
 		theApp.m_pTestLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
 	}
 	else
@@ -3820,7 +3820,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 		{
 			strCodeGrade = theApp.SetTotalLoadResultCode(strPanelID, strFpcID, Machine_AOI);
 		}
-		theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
+		//theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
 		theApp.m_pTestLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
 	}
 

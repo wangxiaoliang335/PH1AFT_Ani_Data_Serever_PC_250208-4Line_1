@@ -2369,13 +2369,22 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			SDFSDefectDataBegin& item = m_DefectDataList[ii];
 
 			// X/Y/SIZE：旧 Vision PC 使用浮点格式（如 16732.000000）
-			// 从 CDefectInfo 的 Pos_x/Pos_y/TrueSize 转为浮点字符串
+			// 从 CDefectInfo 的 Pos_x/Pos_y/TrueSize 转为浮点字符串（玻璃物理坐标）
 			// 修复：添加边界检查，防止 defectList 大小小于 m_DefectDataList 时越界
+			// 坐标转换：像素坐标 → 玻璃物理坐标
 			double fX = 0.0, fY = 0.0, fSize = 0.0;
 			if (ii < (size_t)defectList.size())
 			{
-				fX = defectList[ii].Pos_x;
-				fY = defectList[ii].Pos_y;
+				// X 方向：像素坐标 → 玻璃物理坐标
+				double fScaleX = (inspResult.GridImageXLen > 0)
+					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
+				fX = (double)defectList[ii].Pos_x * fScaleX;
+
+				// Y 方向：像素坐标 → 玻璃物理坐标
+				double fScaleY = (inspResult.GridImageYLen > 0)
+					? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0;
+				fY = (double)defectList[ii].Pos_y * fScaleY;
+
 				fSize = defectList[ii].TrueSize > 0 ? defectList[ii].TrueSize
 					: max((double)defectList[ii].Pos_width, (double)defectList[ii].Pos_height);
 			}
@@ -2414,16 +2423,28 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			SDFSDefectDataBegin& item = m_DefectDataList[ii];
 
 			// 坐标：优先使用 defectList（真实缺陷坐标），否则使用 m_DefectDataList（汇总坐标 0）
-			// DATA_X1/DATA_X2：缺陷起始/结束 X = Pos_x ± Pos_width/2
-			// GATE_Y1/GATE_Y2：缺陷起始/结束 Y = Pos_y ± Pos_height/2
+			// DATA_X1/DATA_X2：缺陷起始/结束 X = Pos_x ± Pos_width/2（像素坐标）
+			// GATE_Y1/GATE_Y2：缺陷起始/结束 Y = Pos_y ± Pos_height/2（像素坐标）
+			// 注意：需要转换为玻璃物理坐标 = 像素坐标 × PanelPhysicalXLen / GridImageXLen
 			double fX1 = 0.0, fY1 = 0.0, fX2 = 0.0, fY2 = 0.0;
 			CString strImgFile;
 			if (ii < (size_t)defectList.size())
 			{
-				fX1 = defectList[ii].Pos_x - defectList[ii].Pos_width / 2.0;
-				fY1 = defectList[ii].Pos_y - defectList[ii].Pos_height / 2.0;
-				fX2 = defectList[ii].Pos_x + defectList[ii].Pos_width / 2.0;
-				fY2 = defectList[ii].Pos_y + defectList[ii].Pos_height / 2.0;
+				// X 方向：像素坐标 → 玻璃物理坐标
+				double fImageX = (double)defectList[ii].Pos_x;
+				double fWidthX = (double)defectList[ii].Pos_width / 2.0;
+				double fScaleX = (inspResult.GridImageXLen > 0) 
+					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
+				fX1 = (fImageX - fWidthX) * fScaleX;
+				fX2 = (fImageX + fWidthX) * fScaleX;
+
+				// Y 方向：像素坐标 → 玻璃物理坐标
+				double fImageY = (double)defectList[ii].Pos_y;
+				double fHeightY = (double)defectList[ii].Pos_height / 2.0;
+				double fScaleY = (inspResult.GridImageYLen > 0)
+					? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0;
+				fY1 = (fImageY - fHeightY) * fScaleY;
+				fY2 = (fImageY + fHeightY) * fScaleY;
 				if (!defectList[ii].ImagePath.IsEmpty())
 				{
 					int nLastSlash = max(defectList[ii].ImagePath.ReverseFind('\\'),
@@ -2436,7 +2457,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 			}
 			else
 			{
-				// 汇总缺陷记录：坐标为空，使用 strX/strY（均为 "0"）
+				// 汇总缺陷记录：坐标为空（数据库查询结果），使用 strX/strY（均为 "0"）
+				// 注：汇总记录本身没有缺陷坐标，无需坐标转换
 				if (!item.strX.IsEmpty()) fX1 = fX2 = _ttof(item.strX);
 				if (!item.strY.IsEmpty()) fY1 = fY2 = _ttof(item.strY);
 			}

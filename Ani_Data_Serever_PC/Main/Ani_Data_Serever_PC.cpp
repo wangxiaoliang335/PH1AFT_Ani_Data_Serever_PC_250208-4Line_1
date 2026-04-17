@@ -1256,7 +1256,7 @@ void CAni_Data_Serever_PCApp::GetShiftTime(int nTime, int nShiftTime)
 
 void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect defectinfo, int iType)
 {
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start"), strPanelID, strFpcID);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start"), strPanelID, strFpcID);
 	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start %s"), strPanelID, strFpcID, strTypeName);
 	CString strPath, strFilePath, strCodeCount, strShift, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
@@ -1276,7 +1276,7 @@ void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strF
 
 	ini[strTypeName][strCodeCount] = strCodeGrade;
 //220316 START
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s"), strPanelID, strFpcID, strCodeGrade);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s"), strPanelID, strFpcID, strCodeGrade);
 	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s %s"), strPanelID, strFpcID, strCodeGrade, strTypeName);
 //220316 END
 }

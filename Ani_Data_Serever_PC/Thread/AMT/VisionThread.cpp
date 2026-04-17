@@ -332,6 +332,8 @@ void CVisionThread::ThreadRun()
 							InspResult.m_cellId);
 
 						InspResult.m_bResult = TRUE;
+						for (int i = 0; i < 4; i++)
+							m_bICWStartSent[i] = FALSE;
 						theApp.m_TimeOutLog->Info(CStringSupport::FormatString(_T("[PC : %d] AOI [%s] Time out"), InspResult.m_iPCNum, InspResult.m_cellId));
 					}
 				}
@@ -1401,11 +1403,36 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			}
 		}
 
+		CString cstrPanelT;
+		theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Start searching m_lastInspResultVec (size=%d) for cellId"), nFixtureNo, theApp.m_lastInspResultVec.size());
+		for (auto& insp : theApp.m_lastInspResultVec)
+		{
+			if (insp.m_bInspStart == TRUE && insp.m_iPCNum == nFixtureNo - 1)
+			{
+				cstrPanelT = insp.m_cellId;
+				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Found matched insp: m_iPCNum=%d, cellId=%s, m_bInspStart=%d"),
+					nFixtureNo, insp.m_iPCNum, (LPCTSTR)insp.m_cellId, insp.m_bInspStart);
+				break;
+			}
+		}
+		theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Search completed, cstrPanelT=%s (isEmpty=%d)"), nFixtureNo, (LPCTSTR)cstrPanelT, cstrPanelT.IsEmpty());
+
 		// AOI NG 时加入 RankCode 列表（供等级码管理使用）
 		// 注意：第二个参数传 strBarcode（真实 FpcID），与 WriteAOICSVFile 写入路径保持一致
 		if (nPlcResult == m_codeFail)
 		{
-			theApp.m_pRankTread->AddRankCodeList(strUniqueID, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
+			if (cstrPanelT.IsEmpty())
+			{
+				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT is empty, use strBarcode as panelId (FpcID=%s, UniqueID=%s)"),
+					nFixtureNo, (LPCTSTR)strBarcode, (LPCTSTR)strUniqueID);
+				theApp.m_pRankTread->AddRankCodeList(strBarcode, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
+			}
+			else
+			{
+				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT=%s, use cstrPanelT as panelId (FpcID=%s, UniqueID=%s)"),
+					nFixtureNo, (LPCTSTR)cstrPanelT, (LPCTSTR)strBarcode, (LPCTSTR)strUniqueID);
+				theApp.m_pRankTread->AddRankCodeList(cstrPanelT, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
+			}
 			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: AddRankCodeList %s NG (FpcID=%s)"), nFixtureNo, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode);
 		}
 		else
