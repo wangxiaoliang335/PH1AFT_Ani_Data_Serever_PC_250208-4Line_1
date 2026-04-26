@@ -386,6 +386,7 @@
     <ClInclude Include="Util\DBInterface.h">
       <Filter>Util</Filter>
     </ClInclude>
+    <ClInclude Include="Communication\SocketServerBase.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Comm\ImageViewNG.cpp">
@@ -685,5 +686,6 @@
     <ClCompile Include="Util\DBInterface.cpp">
       <Filter>Util</Filter>
     </ClCompile>
+    <ClCompile Include="Communication\SocketServerBase.cpp" />
   </ItemGroup>
 </Project>

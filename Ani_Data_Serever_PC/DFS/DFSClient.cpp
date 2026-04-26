@@ -1642,6 +1642,102 @@ void CDFSClient::RunFtpUploadThread()
 					theApp.m_pFTPLog->Debug(_T("[FTP] OPV txt file path: %s"), strTemp1);
 
 					::CopyFile(strOpvSrc, strOpvDest, FALSE); //image 업로드
+
+					//// 优先从 D:\Data\Share\...\AOI\Image\AddsrcImageADD.jpg 获取（DFS线程已生成的）
+					//// 如果不存在，则从 AOI 检测服务器 D:\MEMS_DFS_Data\MainAOI\... 直接获取 MarkImg.jpg 并重命名
+					//BOOL bImageCopied = FALSE;
+					//if (FileExists(strOpvSrc))
+					//{
+					//	if (::CopyFile(strOpvSrc, strOpvDest, FALSE))
+					//	{
+					//		theApp.m_pFTPLog->Info(_T("[FTP] AddsrcImageADD copied from Share: %s -> %s"), strOpvSrc, strOpvDest);
+					//		bImageCopied = TRUE;
+					//	}
+					//	else
+					//	{
+					//		theApp.m_pFTPLog->Error(_T("[FTP] AddsrcImageADD CopyFile FAILED (Share): src=%s, dest=%s, error=%d"),
+					//			strOpvSrc, strOpvDest, GetLastError());
+					//	}
+					//}
+
+					//// Share路径没有图片，则直接从AOI检测服务器获取
+					//if (!bImageCopied && GetDBInterface().IsConnected())
+					//{
+					//	CInspectionResultList results;
+					//	if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
+					//	{
+					//		CInspectionResult& insp = results.front();
+					//		CDefectInfoList defectList;
+					//		CString strAoiImageDir;
+
+					//		// 方式1：从缺陷表 ImagePath 提取目录
+					//		if (GetDBInterface().QueryDefectsByParentGUID(insp.GUID, defectList))
+					//		{
+					//			for (const auto& defect : defectList)
+					//			{
+					//				if (!defect.ImagePath.IsEmpty())
+					//				{
+					//					CString strSrcPath = defect.ImagePath;
+					//					// 判断绝对路径
+					//					BOOL bAbs = (strSrcPath.GetLength() >= 3 && strSrcPath.GetAt(1) == ':' && strSrcPath.GetAt(2) == '\\');
+					//					if (!bAbs)
+					//						strSrcPath = DEFAULT_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
+					//					int nSlash = max(strSrcPath.ReverseFind('\\'), strSrcPath.ReverseFind('/'));
+					//					if (nSlash >= 0)
+					//						strAoiImageDir = strSrcPath.Left(nSlash);
+					//					if (!strAoiImageDir.IsEmpty() && PathIsDirectory(strAoiImageDir))
+					//						break;
+					//					strAoiImageDir.Empty();
+					//				}
+					//			}
+					//		}
+
+					//		// 方式2：从数据库字段构建路径
+					//		if (strAoiImageDir.IsEmpty() && !insp.LocalIP.IsEmpty() && insp.PlatformID >= 0)
+					//		{
+					//			CString strIdx, strDate;
+					//			strIdx.Format(_T("%d"), insp.PlatformID + 1);
+					//			strDate = insp.StartTime.Format(_T("%Y-%m-%d"));
+					//			strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"),
+					//				DEFAULT_MAIN_AOI_IMAGE_ROOT, (LPCTSTR)insp.LocalIP,
+					//				(LPCTSTR)strIdx, (LPCTSTR)strDate, (LPCTSTR)strPanelID);
+					//			theApp.m_pFTPLog->Debug(_T("[FTP] Built AoiImageDir from DB: %s"), strAoiImageDir);
+					//		}
+
+					//		// 从 AOI 服务器复制 MarkImg.jpg → AddsrcImageADD.jpg
+					//		if (!strAoiImageDir.IsEmpty())
+					//		{
+					//			CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+					//			theApp.m_pFTPLog->Debug(_T("[FTP] Trying MarkImg from AOI server: %s"), strMarkSrc);
+					//			if (FileExists(strMarkSrc))
+					//			{
+					//				if (::CopyFile(strMarkSrc, strOpvDest, FALSE))
+					//				{
+					//					theApp.m_pFTPLog->Info(_T("[FTP] AddsrcImageADD copied from AOI server: %s -> %s"), strMarkSrc, strOpvDest);
+					//					bImageCopied = TRUE;
+					//				}
+					//				else
+					//				{
+					//					theApp.m_pFTPLog->Error(_T("[FTP] AddsrcImageADD CopyFile FAILED (AOI server): src=%s, dest=%s, error=%d"),
+					//						strMarkSrc, strOpvDest, GetLastError());
+					//				}
+					//			}
+					//			else
+					//			{
+					//				theApp.m_pFTPLog->Info(_T("[FTP] MarkImg.jpg not found on AOI server: %s"), strMarkSrc);
+					//			}
+					//		}
+					//	}
+					//	else
+					//	{
+					//		theApp.m_pFTPLog->Info(_T("[FTP] QueryByBarcode failed for OPV image: PanelID=%s"), strPanelID);
+					//	}
+					//}
+
+					//if (!bImageCopied)
+					//{
+					//	theApp.m_pFTPLog->Error(_T("[FTP] AddsrcImageADD copy SKIPPED - image not available: PanelID=%s"), strPanelID);
+					//}
 					//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
 				}
 

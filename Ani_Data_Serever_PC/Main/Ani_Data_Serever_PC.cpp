@@ -1257,7 +1257,7 @@ void CAni_Data_Serever_PCApp::GetShiftTime(int nTime, int nShiftTime)
 void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect defectinfo, int iType)
 {
 	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start"), strPanelID, strFpcID);
-	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start %s"), strPanelID, strFpcID, strTypeName);
+	//theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode Start %s"), strPanelID, strFpcID, strTypeName);
 	CString strPath, strFilePath, strCodeCount, strShift, strCodeGrade;
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	if (iType == Machine_AOI)
@@ -1277,7 +1277,7 @@ void CAni_Data_Serever_PCApp::SetSaveResultCode(CString strPanelID, CString strF
 	ini[strTypeName][strCodeCount] = strCodeGrade;
 //220316 START
 	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s"), strPanelID, strFpcID, strCodeGrade);
-	theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s %s"), strPanelID, strFpcID, strCodeGrade, strTypeName);
+	//theApp.m_pTestLog->Info(_T("PanelID [%s] FpcID [%s] AOI SetSaveResultCode End %s %s"), strPanelID, strFpcID, strCodeGrade, strTypeName);
 //220316 END
 }
 
@@ -1293,8 +1293,8 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 			if (!strDBCode.IsEmpty() && !strDBGrade.IsEmpty())
 			{
 				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
-				m_pTestLog->Info(_T("LoadResultIndexCode DB OK: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
-					strPanelID, strFpcID, strDBCode, strDBGrade);
+				//m_pTestLog->Info(_T("LoadResultIndexCode DB OK: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+				//	strPanelID, strFpcID, strDBCode, strDBGrade);
 				return;
 			}
 			else
@@ -1303,15 +1303,15 @@ void CAni_Data_Serever_PCApp::LoadResultIndexCode(CString strPanelID, CString st
 				strDBCode = _T("XPOXSD");
 				strDBGrade = _T("Y5");
 				m_FlowResultDatas.insert(make_pair(strDBGrade, strDBCode));
-				m_pTestLog->Warn(_T("LoadResultIndexCode DB Empty, Use Default: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
-					strPanelID, strFpcID, strDBCode, strDBGrade);
+				//m_pTestLog->Warn(_T("LoadResultIndexCode DB Empty, Use Default: PanelID=%s, FpcID=%s, Code=%s, Grade=%s"),
+				//	strPanelID, strFpcID, strDBCode, strDBGrade);
 				return;
 			}
 		}
 		else
 		{
-			m_pTestLog->Warn(_T("LoadResultIndexCode DB Query Failed: FpcID=%s, %s"),
-				strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
+			//m_pTestLog->Warn(_T("LoadResultIndexCode DB Query Failed: FpcID=%s, %s"),
+			//	strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
 		}
 	}
 
@@ -1376,15 +1376,15 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 		{
 			if (!strDBCode.IsEmpty())
 			{
-				m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
-					strFpcID, strDBCode, strDBGrade);
+				//m_pTestLog->Info(_T("SetLoadResultCode DB Success: FpcID=%s, Code=%s, Grade=%s"),
+				//	strFpcID, strDBCode, strDBGrade);
 				m_Send_Result_Code_Map.insert(make_pair(strDBCode, strDBGrade));
 				bGetFromDB = TRUE;
 			}
 		}
 		else
 		{
-			m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
+			//m_pTestLog->Info(_T("SetLoadResultCode DB Failed: %s"), GetDBInterface().GetLastError());
 		}
 	}
 
@@ -1395,7 +1395,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 	}
 
 	// 数据库获取失败，fallback到文件读取
-	m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
+	//m_pTestLog->Info(_T("SetLoadResultCode: Fallback to file read"));
 
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strFilePath.Format(_T("%s\\%s\\%s_%s\\%s.txt"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift, strFpcID); // 0628
@@ -1413,19 +1413,19 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 
 		if (FileExists(strFilePath))
 		{
-			theApp.m_pTestLog->Info(_T("SetLoadResultCode finde : %s"), strFilePath);
+			//theApp.m_pTestLog->Info(_T("SetLoadResultCode finde : %s"), strFilePath);
 			break;
 		}
 		else
 		{
-			theApp.m_pTestLog->Info(_T("SetLoadResultCode Not finde : %s"), strFilePath);
+			//theApp.m_pTestLog->Info(_T("SetLoadResultCode Not finde : %s"), strFilePath);
 		}
 	}
 
 	EZIni ini(strFilePath);
 
 	std::vector<CString> listOfKeyNames;
-	theApp.m_pTestLog->Info(_T("strFilePath %s, %d"), strFilePath, FileExists(strFilePath));
+	//theApp.m_pTestLog->Info(_T("strFilePath %s, %d"), strFilePath, FileExists(strFilePath));
 	for (auto InspNames : IndexInspNames)
 	{
 		ini[InspNames].EnumKeyNames(listOfKeyNames);
@@ -1444,7 +1444,7 @@ void CAni_Data_Serever_PCApp::SetLoadResultCode(CString strPanelID, CString strF
 			responseTokens.RemoveAll();
 			strCodeGrade = strCode = strGrade = _T("");
 
-			theApp.m_pTestLog->Info(_T("strFilePath_ini %s"), strCodeGrade);
+			//theApp.m_pTestLog->Info(_T("strFilePath_ini %s"), strCodeGrade);
 		}
 		listOfKeyNames.clear();
 	}
@@ -1472,8 +1472,10 @@ CString CAni_Data_Serever_PCApp::SetTotalLoadResultCode(CString strPanelID, CStr
 		}
 		else
 		{
+			strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), strCode, strGrade);
 			theApp.m_PlcLog->Warn(_T("PanelID [%s] FpcID [%s] AOI SetTotalLoadResultCode DB Query Failed: %s"),
 				strPanelID, strFpcID, (LPCTSTR)GetDBInterface().GetLastError());
+			return strCodeGrade;
 		}
 	}
 
@@ -4660,15 +4662,15 @@ void CAni_Data_Serever_PCApp::LoadGradeFlow()
 	strPath = strPath + _T("Setrank_") + theApp.m_CurrentModel.m_AlignPcCurrentModelName + _T(".ini");
 	EZIni ini(strPath);
 
-	m_pTestLog->Info(_T("[LoadGradeFlow] INI path: %s"), strPath);
+	//m_pTestLog->Info(_T("[LoadGradeFlow] INI path: %s"), strPath);
 
 	ini[RankIniTital[GRADEFLOW]].EnumKeyNames(listOfKeyNames);
-	m_pTestLog->Info(_T("[LoadGradeFlow] KeyNames count: %d"), listOfKeyNames.size());
+	//m_pTestLog->Info(_T("[LoadGradeFlow] KeyNames count: %d"), listOfKeyNames.size());
 
 	for (auto list : listOfKeyNames)
 	{
 		strGradeFlowInfo = ini[RankIniTital[GRADEFLOW]][list];
-		m_pTestLog->Info(_T("[LoadGradeFlow] Key[%s] = [%s]"), list, strGradeFlowInfo);
+		//m_pTestLog->Info(_T("[LoadGradeFlow] Key[%s] = [%s]"), list, strGradeFlowInfo);
 		if (strGradeFlowInfo.IsEmpty() == FALSE
 			&& strGradeFlowInfo.Find(_T("^")) != -1)
 		{
@@ -4678,11 +4680,11 @@ void CAni_Data_Serever_PCApp::LoadGradeFlow()
 
 			TempFlow.strGrade = responseTokens[0];
 			TempFlow.iFlow = _ttoi(responseTokens[1]);
-			m_pTestLog->Info(_T("[LoadGradeFlow] Parsed -> strGrade: [%s], iFlow: %d"), TempFlow.strGrade, TempFlow.iFlow);
+			//m_pTestLog->Info(_T("[LoadGradeFlow] Parsed -> strGrade: [%s], iFlow: %d"), TempFlow.strGrade, TempFlow.iFlow);
 			m_VecGradeFlow.push_back(TempFlow);
 		}
 	}
-	m_pTestLog->Info(_T("[LoadGradeFlow] Total m_VecGradeFlow size: %d"), m_VecGradeFlow.size());
+	//m_pTestLog->Info(_T("[LoadGradeFlow] Total m_VecGradeFlow size: %d"), m_VecGradeFlow.size());
 }
 
 

@@ -77,8 +77,8 @@ void CPgIndex::ThreadRun()
 		(dwCurrentTime - s_dwLastPg1LogTime > PG_LOG_INTERVAL_MS))
 	{
 		CString strStatus = bCurrentPg1Connected ? _T("Connected") : _T("Disconnected");
-		theApp.m_PgSocketManager[PgServer_1].PgLogMessage(
-			CStringSupport::FormatString(_T("[PG Status] PG1 (Port:55000) = %s"), strStatus));
+		//theApp.m_PgSocketManager[PgServer_1].PgLogMessage(
+		//	CStringSupport::FormatString(_T("[PG Status] PG1 (Port:55000) = %s"), strStatus));
 		s_bLastPg1Connected = bCurrentPg1Connected;
 		s_dwLastPg1LogTime = dwCurrentTime;
 	}
@@ -88,8 +88,8 @@ void CPgIndex::ThreadRun()
 	if (theApp.m_PlcConectStatus != s_bLastPlcConnected)
 	{
 		CString strStatus = theApp.m_PlcConectStatus ? _T("Connected") : _T("Disconnected");
-		theApp.m_PlcThread->LogWrite(
-			CStringSupport::FormatString(_T("[%s] PLC Status = %s"), m_strIndexName, strStatus), FALSE);
+		//theApp.m_PlcThread->LogWrite(
+		//	CStringSupport::FormatString(_T("[%s] PLC Status = %s"), m_strIndexName, strStatus), FALSE);
 		s_bLastPlcConnected = theApp.m_PlcConectStatus;
 	}
 
@@ -114,7 +114,7 @@ void CPgIndex::ThreadRun()
 				//	theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
 				//else
 				//	theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
-				theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=%d, Call ZonePanelCheck"), m_strIndexName, bPlcSend);
+				//theApp.m_PlcLog->Info(_T("[%s] Contact PlcSend=%d, Call ZonePanelCheck"), m_strIndexName, bPlcSend);
 				s_bLastContactPlcSend = bPlcSend;
 			}
 
@@ -135,10 +135,10 @@ void CPgIndex::ThreadRun()
 				static BOOL s_bLastTouchPlcSend = FALSE;
 				if (bTouchPlcSend != s_bLastTouchPlcSend)
 				{
-					if (bTouchPlcSend)
-						theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
-					else
-						theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
+					//if (bTouchPlcSend)
+					//	theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=TRUE, Call ZonePanelCheck"), m_strIndexName);
+					//else
+					//	theApp.m_PlcLog->Info(_T("[%s] Touch PlcSend=FALSE, Set PcReceiver=FALSE"), m_strIndexName);
 					s_bLastTouchPlcSend = bTouchPlcSend;
 				}
 

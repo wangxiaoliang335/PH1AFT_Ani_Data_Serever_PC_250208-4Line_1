@@ -229,7 +229,7 @@ void CDlgTimeInspect::OnTimer(UINT_PTR nIDEvent)
 
 void CDlgTimeInspect::UpdateDisplay(int nShift)
 {
-	theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === START === nShift[%d]"), nShift);
+	//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === START === nShift[%d]"), nShift);
 
 	SumProduction.Reset(nShift);
 
@@ -258,7 +258,7 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 		sTemp.Format(_T("0"));
 		m_btnAlignTotal.SetWindowText(sTemp);
 
-		theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[0] - No data to display"));
+		//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[0] - No data to display"));
 	}
 	else
 	{
@@ -291,17 +291,17 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 		sTemp.Format(_T("%d"), SumProduction.m_AlignResult[nShift]);
 		m_btnAlignTotal.SetWindowText(sTemp);
 
-		theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
-			SumProduction.m_InspectionTotal[nShift],
-			SumProduction.m_GoodResult[nShift],
-			SumProduction.m_BadResult[nShift],
-			SumProduction.m_ContactResult[nShift],
-			SumProduction.m_VisionResult[nShift],
-			SumProduction.m_ViewingResult[nShift],
-			SumProduction.m_PreGammaResult[nShift],
-			SumProduction.m_TpResult[nShift],
-			SumProduction.m_TrayDataOut[nShift],
-			SumProduction.m_AlignResult[nShift]);
+		//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] Total: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
+		//	SumProduction.m_InspectionTotal[nShift],
+		//	SumProduction.m_GoodResult[nShift],
+		//	SumProduction.m_BadResult[nShift],
+		//	SumProduction.m_ContactResult[nShift],
+		//	SumProduction.m_VisionResult[nShift],
+		//	SumProduction.m_ViewingResult[nShift],
+		//	SumProduction.m_PreGammaResult[nShift],
+		//	SumProduction.m_TpResult[nShift],
+		//	SumProduction.m_TrayDataOut[nShift],
+		//	SumProduction.m_AlignResult[nShift]);
 	}
 
 	for (int ii = 0; ii < InspectTimeTotalCount; ii++)
@@ -329,7 +329,7 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 			sTemp.Format(_T("0"));
 			m_btnAlign[ii].SetWindowText(sTemp);
 
-			theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[0] - No data"), ii);
+			//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[0] - No data"), ii);
 		}
 		else
 		{
@@ -362,22 +362,22 @@ void CDlgTimeInspect::UpdateDisplay(int nShift)
 			sTemp.Format(_T("%d"), theApp.m_UiShift_TimeProduction[ii].m_AlignResult[nShift]);
 			m_btnAlign[ii].SetWindowText(sTemp);
 
-			theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
-				ii,
-				theApp.m_UiShift_TimeProduction[ii].m_InspectionTotal[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_GoodResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_BadResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_ContactResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_VisionResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_ViewingResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_PreGammaResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_TpResult[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_TrayDataOut[nShift],
-				theApp.m_UiShift_TimeProduction[ii].m_AlignResult[nShift]);
+			//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] TimeSlot[%02d]: InspectTotal[%d] Good[%d] Bad[%d] Contact[%d] Vision[%d] Viewing[%d] Otp[%d] Tp[%d] TrayOut[%d] Align[%d]"),
+			//	ii,
+			//	theApp.m_UiShift_TimeProduction[ii].m_InspectionTotal[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_GoodResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_BadResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_ContactResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_VisionResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_ViewingResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_PreGammaResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_TpResult[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_TrayDataOut[nShift],
+			//	theApp.m_UiShift_TimeProduction[ii].m_AlignResult[nShift]);
 		}
 	}
 
-	theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === END === nShift[%d]"), nShift);
+	//theApp.m_pTestLog->LOG_INFO(_T("[CDlgTimeInspect::UpdateDisplay] === END === nShift[%d]"), nShift);
 }
 
 
