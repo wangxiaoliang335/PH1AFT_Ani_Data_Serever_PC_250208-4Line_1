@@ -1586,11 +1586,11 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			dfsData.m_Lumitop = strLumitopResult;
 
 			// 时间戳
-			dfsData.m_StartTime = GetNowSystemTimeMilliseconds();
-			dfsData.m_EndTime = GetNowSystemTimeMilliseconds();
+			//dfsData.m_StartTime = GetNowSystemTimeMilliseconds();
+			//dfsData.m_EndTime = GetNowSystemTimeMilliseconds();
 
 			// 上传到 DFS（异步队列处理）
-			theApp.m_pFTP->AddTransferFile(dfsData);
+			//theApp.m_pFTP->AddTransferFile(dfsData);
 			LogWrite(CStringSupport::FormatString(_T("[ICW] DFS upload queued: PanelID=%s, Lumitop=%s, Fixture=%d"),
 				(LPCTSTR)strBarcode, (LPCTSTR)strLumitopResult, nFixtureNo), 0);
 			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step6 completed - DFS upload: PanelID=%s, Lumitop=%s"),

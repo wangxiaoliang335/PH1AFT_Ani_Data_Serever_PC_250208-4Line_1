@@ -623,7 +623,7 @@ void CDFSClient::DeleteFolderAndFile(LPCTSTR szFolderPath, BOOL flag)
 			if (flag == TRUE)
 				break;
 		}
-		Delay(300);
+		Delay(150);
 		if (!((_tcscmp(info.cFileName, _T(".")) == 0) || (_tcscmp(info.cFileName, _T("..")) == 0)))
 		{
 			if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)  //Subµð·ºÅä¸®°¡ Á¸ÀçÇÏ´Â°æ¿ì 
@@ -654,17 +654,36 @@ void CDFSClient::DeleteFolderAndFile(LPCTSTR szFolderPath, BOOL flag)
 
 void CDFSClient::RunDfsDeleatThread()
 {
-	CString strDFSPath;
+	CString strDFSPath, strMEMSPath, strMEMSMidPath;
 	int i = 1;
+	strMEMSMidPath = _T("MainAOI\\192.168.100.101-6501\\");
 	while (::WaitForSingleObject(m_hDfsDeleatQuit, 1000) != WAIT_OBJECT_0)
 	{
 		COleDateTime now;
 		CString strDate;
 		now = COleDateTime::GetCurrentTime();
-		strDate.Format(_T("%d%02d%02d"), now.GetYear(), now.GetMonth(), now.GetDay()-i);
+
+		// 正确获取前一天
+		COleDateTime prevDay = now - COleDateTimeSpan(i, 0, 0, 0);
+
+		strDate.Format(_T("%d%02d%02d"), prevDay.GetYear(), prevDay.GetMonth(), prevDay.GetDay());
 		
 		strDFSPath = DFS_SHARE_PATH + strDate;
+
+		theApp.m_pFTPLog->Info(_T("RunDfsDeleatThread strDFSPath : %s, m_DeleteStart:%d"), strDFSPath, m_DeleteStart);
+
 		DeleteFolderAndFile(strDFSPath, m_DeleteStart);
+
+		COleDateTime prevDay1 = now - COleDateTimeSpan(i + 1, 0, 0, 0);
+		strDate.Format(_T("%d-%02d-%02d"), prevDay1.GetYear(), prevDay1.GetMonth(), prevDay1.GetDay());
+		for (int index = 1; index <= 4; index++)
+		{
+			strMEMSPath.Format(_T("%s%s%d\\"), theApp.m_strMainAOIImageRoot, strMEMSMidPath, index);
+			strMEMSPath += strDate;
+			theApp.m_pFTPLog->Info(_T("RunDfsDeleatThread strMEMSPath : %s, m_DeleteStart:%d"), strMEMSPath, m_DeleteStart);
+			DeleteFolderAndFile(strMEMSPath, m_DeleteStart);
+		}
+
 		i++;
 		if (now.GetHour() == 23)
 			i = 1;

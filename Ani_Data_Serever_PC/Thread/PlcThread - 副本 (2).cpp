@@ -1,4 +1,4 @@
-﻿
+
 #include "stdafx.h"
 #if _SYSTEM_AMTAFT_
 #include "DlgMainView.h"
@@ -1545,10 +1545,6 @@ UINT CPlcThread::PlcThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 线程创建时提前初始化数据库连接（TLS）
-	GetDBInterface().EnsureThreadConnection();
-
 	pThis->ThreadRun();
 	return 1L;
 
@@ -1665,9 +1661,6 @@ UINT CPlcThread::HeartBitThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 心跳线程不需要数据库连接
-
 	pThis->HeartBitThreadRun();
 	return 1L;
 
@@ -1676,9 +1669,6 @@ UINT CPlcThread::TactPlcThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 节拍线程不需要数据库连接
-
 	pThis->TactThreadRun();
 	return 1L;
 
@@ -3546,7 +3536,7 @@ void CPlcThread::DefectCodeStart(int iNum)
 	FpcIDData pFpcData;
 	DefectCodeRank pDefectCodeRank;
 	DefectGradeRank pDefectGradeRank;
-
+	char szBuf[4] = "tes";
 	CString strPanelID, strFpcID;
 	CString strCode, strGrade;
 
@@ -3600,12 +3590,13 @@ void CPlcThread::DefectCodeStart(int iNum)
 	//220316 End
 
 	theApp.m_pSendDefectCodeLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
-
-	theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + iNum, &pDefectCodeRank);
-	theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + iNum, &pDefectGradeRank);
+	
+	long DefectRandRet = theApp.m_pEqIf->m_pMNetH->SetTestData(eWordType_DefectCodeResult1 + iNum, szBuf);
+	//long DefectRandRet = theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + iNum, &pDefectCodeRank);
+	long GradeRankRet = theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + iNum, &pDefectGradeRank);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + iNum, OffSet_0, TRUE);
 
-	theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] eBitType_DefectCodeEnd1 : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
+	theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] eBitType_DefectCodeEnd1 : [%s][%s], DefectRandRet:%ld, GradeRankRet:%ld"), strPanelID, strFpcID, strCode, strGrade, DefectRandRet, GradeRankRet);
 	/*CString strPath, strFilePath, strShift; 
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strPath.Format(_T("%s\\%s\\%s_%s"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift);
