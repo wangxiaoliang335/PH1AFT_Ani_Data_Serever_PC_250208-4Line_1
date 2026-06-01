@@ -718,7 +718,7 @@ void CVisionThread::SendICWStartMessage(BOOL bSimulation, const BOOL startFlagsC
 	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] Sending message: %s"), strStartMsg), 0);
 	BOOL bSendRet = theApp.m_ICWCommManager.SendMessage(strStartMsg);
 	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] SendMessage return: %d"), bSendRet), 0);
-	LogWrite(CStringSupport::FormatString(_T("[ICW Start$] ========== SendICWStartMessage 完成 ==========")), 0);
+	//LogWrite(CStringSupport::FormatString(_T("[ICW Start$] ========== SendICWStartMessage 完成 ==========")), 0);
 #endif
 }
 
@@ -767,8 +767,8 @@ void CVisionThread::VisionInspectionMethod(int Num, int panelNum, const BOOL sta
 	iCurIndex = (theApp.m_CurrentIndexZone + (MaxZone - CZone)) % 4;
 	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] IndexCalc: m_CurrentIndexZone=%d, MaxZone=%d, CZone=%d, (MaxZone-CZone)=%d"),
 		theApp.m_CurrentIndexZone, MaxZone, CZone, (MaxZone - CZone)), 0);
-	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] IndexCalc: formula=(%d+%d)%%4=%d"),
-		theApp.m_CurrentIndexZone, (MaxZone - CZone), iCurIndex), 0);
+	//LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] IndexCalc: formula=(%d+%d)%%4=%d"),
+	//	theApp.m_CurrentIndexZone, (MaxZone - CZone), iCurIndex), 0);
 	LogWrite(CStringSupport::FormatString(_T("[VisionInspectionMethod] IndexCalc: m_indexList[%d]=%s, m_indexNum=%d + panelNum=%d -> indexPanelNum=%d"),
 		iCurIndex, PG_IndexName[iCurIndex], theApp.m_indexList[iCurIndex].m_indexNum, panelNum, theApp.m_indexList[iCurIndex].m_indexNum + panelNum), 0);
 	// 边界检查：m_indexList 大小为 4（ABCZone 各占 4 个区域）
@@ -1073,7 +1073,7 @@ void CVisionThread::VisionPLCResult(int Num, int iPanelNum, CString ResultMsg, i
 	prodResult.Position = iPanelNum + 1;  // 1-based
 	prodResult.Result = (ResultCode == m_codeOk) ? ICW_RESULT_OK : ICW_RESULT_NG;
 	finishInfo.ProducResults.push_back(prodResult);
-	theApp.m_ICWCommManager.SendFinishInfoAuto(finishInfo);
+	//theApp.m_ICWCommManager.SendFinishInfoAuto(finishInfo);
 
 	LogWrite(CStringSupport::FormatString(_T("Panel %d %s Vision Result %s"), Num, strPanelID, ResultMsg), Num);
 
@@ -1269,8 +1269,8 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 	theApp.m_bVisionDeleteFlag = FALSE;
 	LogWrite(CStringSupport::FormatString(_T("[ICW] OnICWFinishFN: %d slots"), (int)finishInfo.Results.size()), 0);
 	LogWrite(CStringSupport::FormatString(_T("[ICW FN$] RawMessage: [%s]"), (LPCTSTR)finishInfo.RawMessage), 0);
-	LogWrite(_T("[ICW FN$] ========== FN$ 处理开始 =========="), 0);
-	LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Received %d slot results"), (int)finishInfo.Results.size()), 0);
+	//LogWrite(_T("[ICW FN$] ========== FN$ 处理开始 =========="), 0);
+	//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Received %d slot results"), (int)finishInfo.Results.size()), 0);
 
 	// FN$ 每 2 位一个工位，results[0] 对应治具 1，results[1] 对应治具 2，...
 	for (size_t i = 0; i < finishInfo.Results.size(); i++)
@@ -1281,13 +1281,13 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		// 跳过无效结果（0 表示该槽无产品）
 		if (nResult == 0)
 		{
-			LogWrite(CStringSupport::FormatString(_T("[ICW] Slot %d: no product (result=0), skip"), nFixtureNo), 0);
+			//LogWrite(CStringSupport::FormatString(_T("[ICW] Slot %d: no product (result=0), skip"), nFixtureNo), 0);
 			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: No product (result=0), skip"), nFixtureNo), nFixtureNo - 1);
 			continue;
 		}
 
 		LogWrite(CStringSupport::FormatString(_T("[ICW] Slot %d: result=%d"), nFixtureNo, nResult), 0);
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] ========== Process Fixture %d =========="), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] ========== Process Fixture %d =========="), nFixtureNo), nFixtureNo - 1);
 		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Light inspection result=%d"), nFixtureNo, nResult), nFixtureNo - 1);
 
 		// Step 1: 查询 ivs_lcd_idmap（使用 ICW 返回的工位号 nResult 查询）
@@ -1313,7 +1313,7 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			nFixtureNo, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode), nFixtureNo - 1);
 
 		// Step 2: 查询 IVS_LCD_InspectionResult（UniqueID → AOIResult/Code/Grade）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step2 - Query IVS_LCD_InspectionResult"), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step2 - Query IVS_LCD_InspectionResult"), nFixtureNo), nFixtureNo - 1);
 		CInspectionResult inspResult;
 		if (!GetDBInterface().QueryByUniqueID(strUniqueID, inspResult))
 		{
@@ -1361,7 +1361,7 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		{
 			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Call QueryDefectsByParentGUID(GUID=%s)"),
 				nFixtureNo, (LPCTSTR)inspResult.GUID), nFixtureNo - 1);
-			if (!GetDBInterface().QueryDefectsByParentGUID(inspResult.GUID, defectList))
+			if (!GetDBInterface().QueryDefectsByParentGUID_Vision(inspResult.GUID, defectList))
 			{
 				LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: QueryDefectsByParentGUID failed - %s"),
 					nFixtureNo, (LPCTSTR)GetDBInterface().GetLastError()), nFixtureNo - 1);
@@ -1380,11 +1380,11 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		CDFSInfo dfsInfo;
 		if (dfsInfo.WriteAOICSVFile(inspResult, defectList, nFixtureNo, strBarcode))
 		{
-			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile success (DefectCount=%d)"), nFixtureNo, (int)defectList.size());
+			theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile success (DefectCount=%d)"), nFixtureNo, (int)defectList.size());
 		}
 		else
 		{
-			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile failed"), nFixtureNo);
+			theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteAOICSVFile failed"), nFixtureNo);
 		}
 
 		// 写入 OpvDefectCode INI 文件（新机器 AOI 检测完成后生成，供 OPV 复检使用）
@@ -1394,28 +1394,28 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		{
 			if (dfsInfo.WriteOpvDefectCodeINI(strBarcode, defectList, nResult))
 			{
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI success (PanelID=%s, DefectCount=%d)"),
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI success (PanelID=%s, DefectCount=%d)"),
 					nFixtureNo, (LPCTSTR)strBarcode, (int)defectList.size());
 			}
 			else
 			{
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI failed"), nFixtureNo);
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: WriteOpvDefectCodeINI failed"), nFixtureNo);
 			}
 		}
 
 		CString cstrPanelT;
-		theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Start searching m_lastInspResultVec (size=%d) for cellId"), nFixtureNo, theApp.m_lastInspResultVec.size());
+		theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: Start searching m_lastInspResultVec (size=%d) for cellId"), nFixtureNo, theApp.m_lastInspResultVec.size());
 		for (auto& insp : theApp.m_lastInspResultVec)
 		{
 			if (insp.m_bInspStart == TRUE && insp.m_iPCNum == nFixtureNo - 1)
 			{
 				cstrPanelT = insp.m_cellId;
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Found matched insp: m_iPCNum=%d, cellId=%s, m_bInspStart=%d"),
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: Found matched insp: m_iPCNum=%d, cellId=%s, m_bInspStart=%d"),
 					nFixtureNo, insp.m_iPCNum, (LPCTSTR)insp.m_cellId, insp.m_bInspStart);
 				break;
 			}
 		}
-		theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Search completed, cstrPanelT=%s (isEmpty=%d)"), nFixtureNo, (LPCTSTR)cstrPanelT, cstrPanelT.IsEmpty());
+		theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: Search completed, cstrPanelT=%s (isEmpty=%d)"), nFixtureNo, (LPCTSTR)cstrPanelT, cstrPanelT.IsEmpty());
 
 		// AOI NG 时加入 RankCode 列表（供等级码管理使用）
 		// 注意：第二个参数传 strBarcode（真实 FpcID），与 WriteAOICSVFile 写入路径保持一致
@@ -1423,27 +1423,27 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		{
 			if (cstrPanelT.IsEmpty())
 			{
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT is empty, use strBarcode as panelId (FpcID=%s, UniqueID=%s)"),
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT is empty, use strBarcode as panelId (FpcID=%s, UniqueID=%s)"),
 					nFixtureNo, (LPCTSTR)strBarcode, (LPCTSTR)strUniqueID);
 				theApp.m_pRankTread->AddRankCodeList(strBarcode, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
 			}
 			else
 			{
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT=%s, use cstrPanelT as panelId (FpcID=%s, UniqueID=%s)"),
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: cstrPanelT=%s, use cstrPanelT as panelId (FpcID=%s, UniqueID=%s)"),
 					nFixtureNo, (LPCTSTR)cstrPanelT, (LPCTSTR)strBarcode, (LPCTSTR)strUniqueID);
 				theApp.m_pRankTread->AddRankCodeList(cstrPanelT, strBarcode, nFixtureNo - 1, nFixtureNo - 1, RankAOI);
 			}
-			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: AddRankCodeList %s NG (FpcID=%s)"), nFixtureNo, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode);
+			theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: AddRankCodeList %s NG (FpcID=%s)"), nFixtureNo, (LPCTSTR)strUniqueID, (LPCTSTR)strBarcode);
 		}
 		else
 		{
-			theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: AddRankCodeList %s OK"), nFixtureNo, (LPCTSTR)strUniqueID);
+			theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: AddRankCodeList %s OK"), nFixtureNo, (LPCTSTR)strUniqueID);
 		}
 
 		// Step 4: 从 IVS_LCD_InspectionResult 读取缺陷码和等级（已在 Step2 查询得到）
 		// 无需再查 ivs_lcd_aoidefect，直接使用 inspResult 中的字段
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step4 - Read defect code from InspectionResult"),
-			nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step4 - Read defect code from InspectionResult"),
+		//	nFixtureNo), nFixtureNo - 1);
 		CString strDefectCode = inspResult.Code_AOI;
 		CString strGrade = inspResult.Grade_AOI;
 
@@ -1464,7 +1464,7 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 		// 3 = NG Buffer 2（等级1的缺陷：B/R2）
 		// 4 = NG Buffer 3（等级2的缺陷：C/R3）
 		// 5 = NG Buffer 4（等级3的缺陷：R4）
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step5 - Write SendNgBufferResult"), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step5 - Write SendNgBufferResult"), nFixtureNo), nFixtureNo - 1);
 		int nSendNGBuffer = 0;
 		if (nPlcResult == m_codeOk)
 		{
@@ -1514,12 +1514,12 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 
 		// Step 7: 设置 VisionEnd 信号（点灯检完成标志，通知 PLC 取走结果）
 		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionEnd1 + (nFixtureNo - 1), OffSet_0, TRUE);
-		LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC VisionEnd%d = TRUE"), nFixtureNo), 0);
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step7 completed - VisionEnd=TRUE"), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW] Set PLC VisionEnd%d = TRUE"), nFixtureNo), 0);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step7 completed - VisionEnd=TRUE"), nFixtureNo), nFixtureNo - 1);
 
 		// 写入缺陷码（如果有的话，存储到 PLC 对应区域）
 		// 参考 PlcThread 的 DefectCodeStart 逻辑：检测 Start bit 上升沿，写入数据后设置 End bit
-		LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step10 - DefectCode handshake"), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step10 - DefectCode handshake"), nFixtureNo), nFixtureNo - 1);
 
 		// 读取 PLC DefectCodeStart bit（与 PlcThread 逻辑一致）
 		//BOOL bStartFlag = theApp.m_pEqIf->m_pMNetH->GetPlcBitData(eBitType_DefectCodeStart1 + (nFixtureNo - 1), OffSet_0);
@@ -1585,16 +1585,16 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 			CString strLumitopResult = (nVisionResult == m_codeOk) ? _T("OK") : _T("NG");
 			dfsData.m_Lumitop = strLumitopResult;
 
-			// 时间戳
-			dfsData.m_StartTime = GetNowSystemTimeMilliseconds();
-			dfsData.m_EndTime = GetNowSystemTimeMilliseconds();
+			//// 时间戳
+			//dfsData.m_StartTime = GetNowSystemTimeMilliseconds();
+			//dfsData.m_EndTime = GetNowSystemTimeMilliseconds();
 
-			// 上传到 DFS（异步队列处理）
-			theApp.m_pFTP->AddTransferFile(dfsData);
-			LogWrite(CStringSupport::FormatString(_T("[ICW] DFS upload queued: PanelID=%s, Lumitop=%s, Fixture=%d"),
-				(LPCTSTR)strBarcode, (LPCTSTR)strLumitopResult, nFixtureNo), 0);
-			LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step6 completed - DFS upload: PanelID=%s, Lumitop=%s"),
-				nFixtureNo, (LPCTSTR)strBarcode, (LPCTSTR)strLumitopResult), nFixtureNo - 1);
+			//// 上传到 DFS（异步队列处理）
+			//theApp.m_pFTP->AddTransferFile(dfsData);
+			//LogWrite(CStringSupport::FormatString(_T("[ICW] DFS upload queued: PanelID=%s, Lumitop=%s, Fixture=%d"),
+			//	(LPCTSTR)strBarcode, (LPCTSTR)strLumitopResult, nFixtureNo), 0);
+			//LogWrite(CStringSupport::FormatString(_T("[ICW FN$] Fixture %d: Step6 completed - DFS upload: PanelID=%s, Lumitop=%s"),
+			//	nFixtureNo, (LPCTSTR)strBarcode, (LPCTSTR)strLumitopResult), nFixtureNo - 1);
 		}
 		else
 		{
@@ -1610,12 +1610,12 @@ void CVisionThread::OnICWFinishFN(const ICW_LegacyFinishInfo& finishInfo)
 				strMsg = CStringSupport::FormatString(_T("%d,%d"), MC_NG_PANEL, _AOI);
 				theApp.m_OpvSocketManager[0].SendOpvMessage(strMsg, 0, MC_NG_PANEL);
 				theApp.m_OpvSocketManager[1].SendOpvMessage(strMsg, 1, MC_NG_PANEL);
-				theApp.m_pTestLog->Info(_T("[ICW FN$] Fixture %d: Send OPV NG Panel=%s"), nFixtureNo, (LPCTSTR)strUniqueID);
+				theApp.m_VisionLog->Info(_T("[ICW FN$] Fixture %d: Send OPV NG Panel=%s"), nFixtureNo, (LPCTSTR)strUniqueID);
 			}
 		}
 
-		LogWrite(CStringSupport::FormatString(
-			_T("[ICW FN$] Fixture %d: ========== Process completed =========="), nFixtureNo), nFixtureNo - 1);
+		//LogWrite(CStringSupport::FormatString(
+		//	_T("[ICW FN$] Fixture %d: ========== Process completed =========="), nFixtureNo), nFixtureNo - 1);
 
 		// 【Bug1 修复】停止该槽位的超时计时器，并设置 m_bResult=TRUE
 		// 防止 30 秒超时定时器在 FN$ 正常完成后仍然触发 VisionPLCResult(TimeOut)

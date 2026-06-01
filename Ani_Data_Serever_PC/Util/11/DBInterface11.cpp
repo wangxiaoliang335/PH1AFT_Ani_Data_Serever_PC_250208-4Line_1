@@ -704,49 +704,6 @@ BOOL CDBInterface::ExecuteSQL(const CString& strSQL)
         // Must get error info BEFORE freeing the handle!
         m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
         //theApp.m_pTestLog->Info(_T("[DBError] SQL Error - %s | SQL: %s"), m_strLastError, strSQL);
-        // 检测 MySQL server has gone away，自动重连
-        if (m_strLastError.Find(_T("MySQL server has gone away")) >= 0 ||
-            m_strLastError.Find(_T("Lost connection")) >= 0 ||
-            m_strLastError.Find(_T("server has gone away")) >= 0)
-        {
-            TRACE(_T("[DB] MySQL connection lost, trying to reconnect...\n"));
-            //theApp.m_pTestLog->Info(_T("[DB] MySQL connection lost, reconnecting..."));
-
-            // 重建当前线程的连接
-            if (ReconnectThreadConnection())
-            {
-                TRACE(_T("[DB] Reconnection successful, retrying query...\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection successful, retrying query"));
-
-                // 重试 SQL
-                hConn = GetThreadConnection();
-                if (hConn)
-                {
-                    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
-                    if (SQL_SUCCEEDED(ret))
-                    {
-                        ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
-                        if (SQL_SUCCEEDED(ret))
-                        {
-                            TRACE(_T("[DB] Retry successful!\n"));
-                            return TRUE;
-                        }
-                        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-                        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-                        hStmt = SQL_NULL_HSTMT;
-                    }
-                }
-            }
-            else
-            {
-                TRACE(_T("[DB] Reconnection failed!\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection failed"));
-            }
-        }
-
-        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-        hStmt = SQL_NULL_HSTMT;
-        return FALSE;
     }
 
     // Free statement handle after getting error

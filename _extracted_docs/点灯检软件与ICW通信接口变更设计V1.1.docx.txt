@@ -1,0 +1,97 @@
+点灯检软件接口变更设计
+设计变更描述
+主检是TCP服务器端；ICW是TCP客户端。
+整个接口设计可以沿用原来的TCP设计，并且保留一部分已有报文如（SnapFN@、HeartBeat@等），只调整需求报文来减少工作量。
+设计参考：由于保留原来的报文以及TCP的格式，所以依然可以用字符串进行通信，以@为报文尾进行切割分析。
+由于需要简化开始和结束通信过程，增加传递信息内容，不再借助数据库，所以增加通信传递内容，为了解析方便，所以使用json来进行对象的序列化，方便校验与双方使用，参考输入（以C#代码为例）：
+ICW通知主检：开始检测 报文对象
+Public class StartInfo
+{
+Public string Action;					//动作内容，Start对应开始检测，Judge										对应是否需要复核
+Public int MaxProductCountPerJig; 	//每个治具上最多放几块产品
+Public int JigNumber; 				//治具号
+Public List<Product> Products;		//治具上的产品列表
+}
+Public class Product
+{
+Public int Position; 		//在治具的几号位置上，1、2、3、4
+Public string Barcode;	//产品的二维码
+Public string UniqueId;	//本次检测的唯一码
+}
+主检通知ICW：采图完成 注意此信号只是个简单的字符串，无需报文对象。
+主检给ICW发送：
+SnapFN@
+主检通知ICW：检测结束 报文对象
+Public class FinishInfo
+{
+Public string Action;						//动作内容，Start对应开始检测，											Judge对应是否需要复核
+Public List<ProducResult> ProducResults;	//治具上的产品列表
+}
+Public class ProducResult
+{
+Public int Position; 		//在治具的几号位置上，1、2、3、4
+Public int Result;			//产品检测结果，1是OK（如果是Judge的情况，那么就是需要复核），2是NG，3是未检测（无屏）
+}
+版本以及模板
+查询指令：GetVersion@
+返回对象：
+Public class VersionInfo
+{
+Public string AoiVersion;		//点灯检软件版本
+Public string CurrentRecipe;	//点灯检当前模板名称
+Public string RecipeVersion;	//当前模板版本
+Public string JudgeGrade;		//出货等级
+}
+示例：
+开始检测
+{
+  "Action": "Start",
+  "MaxProductCountPerJig": 2,
+  "JigNumber": 1,
+  "Products": [
+    {
+      "Position": 1,
+      "Barcode": "8A2Y050005A1Q2",
+      "UniqueId": "2021_03_25_17_11_01"
+    },
+    {
+      "Position": 2,
+      "Barcode": "",
+      "UniqueId": ""
+    }
+  ]
+}
+其中Position表示屏位置、也即在治具上几号位置，例如同时检测2个屏，通常左侧为1、右侧为2。Barcode为屏二维码。UniqueId为产品流水码，注意由ICW生成并维护，必须不同产品是唯一的，用于标识此产品。
+采图完成
+SnapFN@
+检测结束
+{
+  "Action": "Start",
+  "ProducResults": [
+    {
+      "Position": 1,
+      "Result": 1
+    },
+    {
+      "Position": 2,
+      "Result": 3
+    }
+  ]
+}
+其中，Result取值1是OK、取值2是NG、取值3是异常（如点灯异常、清晰度异常、检测超时等）。
+点灯检软件反馈版本
+{
+  "AoiVersion": "v1.0,0",
+  "CurrentRecipe": "aaa_S",
+  "RecipeVersion": "v1.0.1",
+  "JudgeGrade": "B"
+}
+
+[Tables]
+
+-- table 0 --
+编号	需求说明
+1	ICW通知主检：开始检测通信简化（不再使用数据库中转信息）
+2	主检通知ICW：检测结束后能够给出产品检测结果（OK或NG）
+3	具备获取点灯检软件版本接口 具备获取当前配方以及配方版本接口
+4	具备获取配方变更履历接口

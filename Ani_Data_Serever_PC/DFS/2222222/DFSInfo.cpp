@@ -867,7 +867,7 @@ void CDFSInfo::SetEQPDataInfo(CString strRECIPE_NO, CString strAOI_RECIPE_NAME, 
 
 BOOL CDFSInfo::LoadPanelDFSInfo(CString strFilename, int iInspNum)
 {
-	Delay(320, TRUE);
+	Delay(200, TRUE);
 	CString strInfo, strInspName;
 	CStdioFile sFile;
 	BOOL bFlag = TRUE;

@@ -459,16 +459,22 @@ void CPgManager::AOIDataReceived(CString strContents)
 				if (responseTokens[4] == _T("END"))
 				{
 					theApp.m_pEqIf->m_pMNetH->SetWordResultOffSet(eWordType_AZoneContactOffResult + iIndexNum, iPanelNum, &m_codeOk);
-					PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact Off Success"), strIndexName, iPanelCheal));
+					//PgLogMessage(CStringSupport::FormatString(_T("[%s] Ch %d Contact Off Success"), strIndexName, iPanelCheal));
 					//>> 210301 yjlim 해당 부분에 Index내의 모든 Code Data 읽어들여서 분류 하는 부분 넣자..(이 위치가 아니더라도.. 물류방향 판정할 부분으로 나중에 옮기면 됌..)
 
 					theApp.LoadResultIndexCode(InspResult.m_cellId, InspResult.m_FpcID);
 					int iSendNGBuffer(Flow_AfterMachine);
-					theApp.m_pTestLog->Info(_T("m_FlowResultDatas.size() : %d, panel id : %s"), theApp.m_FlowResultDatas.size(), InspResult.m_cellId);
-					for (auto& flowData : theApp.m_FlowResultDatas)
-					{
-						theApp.m_pTestLog->Info(_T("[FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second);
-					}
+					//PgLogMessage(CStringSupport::FormatString(_T("m_FlowResultDatas.size() : %d, panel id : %s"), theApp.m_FlowResultDatas.size(), InspResult.m_cellId));
+					//for (auto& flowData : theApp.m_FlowResultDatas)
+					//{
+					//	PgLogMessage(CStringSupport::FormatString(_T("[FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second));
+					//}
+
+					//for (auto& gradeFlow : theApp.m_VecGradeFlow)
+					//{
+					//	PgLogMessage(CStringSupport::FormatString(_T("[m_VecGradeFlow] (strGrade): [%s], (iFlow): [%d]"), gradeFlow.strGrade, gradeFlow.iFlow));
+					//}
+
 					if (theApp.m_FlowResultDatas.size() > 0)
 					{
 						for (auto Grades : theApp.m_VecGradeFlow)
@@ -482,14 +488,14 @@ void CPgManager::AOIDataReceived(CString strContents)
 							{
 								//
 								//>> psh 0414
-								theApp.m_pTestLog->Info(_T("m_FlowResultDatas find panel id : %s"), InspResult.m_cellId);
+								//PgLogMessage(CStringSupport::FormatString(_T("m_FlowResultDatas find panel id : %s"), InspResult.m_cellId));
 								if (theApp.m_strEqpId == "MFGAP" || theApp.m_strMachineType == "AFT")
 								{
-									theApp.m_pTestLog->Info(_T("eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, InspResult.m_cellId);
+									//PgLogMessage(CStringSupport::FormatString(_T("eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, InspResult.m_cellId));
 									if (Grades.iFlow == Flow_Operator)
 									{
 										iSendNGBuffer = Grades.iFlow;
-										theApp.m_pTestLog->Info(_T("iSendNGBuffer %d panel id : %s"), iSendNGBuffer, InspResult.m_cellId);
+										//PgLogMessage(CStringSupport::FormatString(_T("iSendNGBuffer %d panel id : %s"), iSendNGBuffer, InspResult.m_cellId));
 									}
 								}
 								else
@@ -499,14 +505,14 @@ void CPgManager::AOIDataReceived(CString strContents)
 							}
 						}
 					}
-					for (auto saveLogs : theApp.m_FlowResultDatas)
-					{
-						theApp.m_pTestLog->Info(_T("Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, InspResult.m_cellId);
-					}
+					//for (auto saveLogs : theApp.m_FlowResultDatas)
+					//{
+					//	PgLogMessage(CStringSupport::FormatString(_T("Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, InspResult.m_cellId));
+					//}
 
 					//iSendNGBuffer = 2;   //test
 
-					theApp.m_pTestLog->Info(_T("Flows Data Final: %s, Panel ID : %s,"), iSendNGBuffer == Flow_AfterMachine ? _T("OK Flow") : _T("NG Flow"), InspResult.m_cellId);
+					//PgLogMessage(CStringSupport::FormatString(_T("Flows Data Final: %s, Panel ID : %s, iPanelNum:%d "), iSendNGBuffer == Flow_AfterMachine ? _T("OK Flow") : _T("NG Flow"), InspResult.m_cellId, iPanelNum));
 					theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_AllZonePos1DirectionResult + iPanelNum, &iSendNGBuffer); /* 1 : go OK, 2 : go NG Buff*/
 					theApp.m_FlowResultDatas.clear();
 					//<< 
@@ -547,9 +553,9 @@ void CPgManager::AOIDataReceived(CString strContents)
 									PgLogMessage(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
 										PG_IndexName[iIndexNum], iChNum, InspResult.m_cellId,
 										CodeList, theApp.m_VecPGCode_PG[iChNum].m_PGCode[0]));
-									theApp.m_pTestLog->Debug(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
-										PG_IndexName[iIndexNum], iChNum, InspResult.m_cellId,
-										CodeList, theApp.m_VecPGCode_PG[iChNum].m_PGCode[0]));
+									//theApp.m_pTestLog->Debug(CStringSupport::FormatString(_T("(MES TEST)[%s] Ch %d Panel [%s] MesPGCode : %s, PG PGCode: %s,"),
+									//	PG_IndexName[iIndexNum], iChNum, InspResult.m_cellId,
+									//	CodeList, theApp.m_VecPGCode_PG[iChNum].m_PGCode[0]));
 									if (iCheckErr == PGCode_OK)
 										break;
 

@@ -278,6 +278,8 @@ public:
 	map<CString, CString> m_FlowResultDatas; //Index의 각 검사 별로 모은 Code, Grade의 Data 모음
 	//<<
 
+	map<CString, CString> m_plcFlowResultDatas; //Index의 각 검사 별로 모은 Code, Grade의 Data 모음
+
 	//>>210422 yjlim
 	std::vector<PGCoderesult> m_VecPGCode_PG;
 	std::vector<PGCoderesult> m_VecPGCode_Mes;
@@ -474,6 +476,7 @@ public:
 	CString SetTotalLoadResultCode(CString strPanelID, CString strFpcID, int iTypeNum);
 	void SetLoadResultCode(CString strPanelID, CString strFpcID);
 	void LoadResultIndexCode(CString strPanelID, CString strFpcID); //210302 yjlim 요걸 새로 만들고,, 기존의 RankData를 최대한 안 건드는 이유는... 기존 Rank의 자료 정리는 설비의 Unloading시 이루어지기 때문에.. 걍 놔둠
+	void LoadPlcResultIndexCode(CString strPanelID, CString strFpcID);
 	void SetSaveResultCode(CString strPanelID, CString strFpcID, CString strTypeName, PLCSendDefect Code, int iType);
 	CString GetProcessID(CString strPanel);
 	CString GetProjectID(CString strPanelID);

@@ -319,11 +319,11 @@ BOOL CDBInterface::KeepAlive()
     if (!SQL_SUCCEEDED(ret))
     {
         TRACE(_T("[DB] KeepAlive failed, trying reconnect...\n"));
-        //theApp.m_pTestLog->Info(_T("[DB] KeepAlive failed, reconnecting..."));
+        theApp.m_pTestLog->Info(_T("[DB] KeepAlive failed, reconnecting..."));
 
         if (ReconnectThreadConnection())
         {
-            //theApp.m_pTestLog->Info(_T("[DB] KeepAlive reconnection successful"));
+            theApp.m_pTestLog->Info(_T("[DB] KeepAlive reconnection successful"));
             return TRUE;
         }
         return FALSE;
@@ -703,50 +703,7 @@ BOOL CDBInterface::ExecuteSQL(const CString& strSQL)
     {
         // Must get error info BEFORE freeing the handle!
         m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-        //theApp.m_pTestLog->Info(_T("[DBError] SQL Error - %s | SQL: %s"), m_strLastError, strSQL);
-        // 检测 MySQL server has gone away，自动重连
-        if (m_strLastError.Find(_T("MySQL server has gone away")) >= 0 ||
-            m_strLastError.Find(_T("Lost connection")) >= 0 ||
-            m_strLastError.Find(_T("server has gone away")) >= 0)
-        {
-            TRACE(_T("[DB] MySQL connection lost, trying to reconnect...\n"));
-            //theApp.m_pTestLog->Info(_T("[DB] MySQL connection lost, reconnecting..."));
-
-            // 重建当前线程的连接
-            if (ReconnectThreadConnection())
-            {
-                TRACE(_T("[DB] Reconnection successful, retrying query...\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection successful, retrying query"));
-
-                // 重试 SQL
-                hConn = GetThreadConnection();
-                if (hConn)
-                {
-                    ret = SQLAllocHandle(SQL_HANDLE_STMT, hConn, &hStmt);
-                    if (SQL_SUCCEEDED(ret))
-                    {
-                        ret = SQLExecDirect(hStmt, (SQLWCHAR*)strSQL.GetString(), SQL_NTS);
-                        if (SQL_SUCCEEDED(ret))
-                        {
-                            TRACE(_T("[DB] Retry successful!\n"));
-                            return TRUE;
-                        }
-                        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-                        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-                        hStmt = SQL_NULL_HSTMT;
-                    }
-                }
-            }
-            else
-            {
-                TRACE(_T("[DB] Reconnection failed!\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection failed"));
-            }
-        }
-
-        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
-        hStmt = SQL_NULL_HSTMT;
-        return FALSE;
+        theApp.m_pTestLog->Info(_T("[DBError] SQL Error - %s | SQL: %s"), m_strLastError, strSQL);
     }
 
     // Free statement handle after getting error
@@ -791,13 +748,13 @@ BOOL CDBInterface::ExecuteQuery(const CString& strSQL, SQLHSTMT& hStmt)
             m_strLastError.Find(_T("server has gone away")) >= 0)
         {
             TRACE(_T("[DB] MySQL connection lost, trying to reconnect...\n"));
-            //theApp.m_pTestLog->Info(_T("[DB] MySQL connection lost, reconnecting..."));
+            theApp.m_pTestLog->Info(_T("[DB] MySQL connection lost, reconnecting..."));
 
             // 重建当前线程的连接
             if (ReconnectThreadConnection())
             {
                 TRACE(_T("[DB] Reconnection successful, retrying query...\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection successful, retrying query"));
+                theApp.m_pTestLog->Info(_T("[DB] Reconnection successful, retrying query"));
 
                 // 重试 SQL
                 hConn = GetThreadConnection();
@@ -821,7 +778,7 @@ BOOL CDBInterface::ExecuteQuery(const CString& strSQL, SQLHSTMT& hStmt)
             else
             {
                 TRACE(_T("[DB] Reconnection failed!\n"));
-                //theApp.m_pTestLog->Info(_T("[DB] Reconnection failed"));
+                theApp.m_pTestLog->Info(_T("[DB] Reconnection failed"));
             }
         }
 
@@ -1196,7 +1153,7 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
         _T("AlgName, AlgID, ReasonCode, ")
         _T("FeatureName, FeatureMin, FeatureMax, FeatureUnit, FeatureValue, ")
         // 图像和XML
-        _T("ImagePath, ")
+        _T("ImagePath, XMLInfo, ")
         // 复判字段
         _T("ReviewResult_Worker, ReviewResult_Machine, MachineReviewDefectName, ")
         _T("DefColor, DefColorValue, DefClass_AutoReview, DefName_AutoReview, ")
@@ -1207,20 +1164,20 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
 
     TRACE(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s\n"), (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
     TRACE(_T("  SQL: %s\n"), (LPCTSTR)strSQL);
-    //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s"),
-    //    (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
-    //theApp.m_pTestLog->Info(_T("  SQL: %s"), (LPCTSTR)strSQL);
+    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] 执行SQL, Table=%s, ParentGUID=%s"),
+        (LPCTSTR)strTableName, (LPCTSTR)strParentGUID);
+    theApp.m_pTestLog->Info(_T("  SQL: %s"), (LPCTSTR)strSQL);
 
     SQLHSTMT hStmt;
     if (!ExecuteQuery(strSQL, hStmt))
     {
-        //TRACE(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s\n"), (LPCTSTR)m_strLastError);
-        //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s"), (LPCTSTR)m_strLastError);
+        TRACE(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s\n"), (LPCTSTR)m_strLastError);
+        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] ExecuteQuery failed, Error=%s"), (LPCTSTR)m_strLastError);
         return FALSE;
     }
 
-    //TRACE(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据...\n"));
-    //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据..."));
+    TRACE(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据...\n"));
+    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] SQL执行成功, 开始Fetch数据..."));
 
     SQLRETURN ret;
     int nFetchCount = 0;
@@ -1229,8 +1186,8 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
         if (ret == SQL_ERROR)
         {
             m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
-            //TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s\n"), m_strLastError);
-            //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s"), m_strLastError);
+            TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s\n"), m_strLastError);
+            theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch failed - %s"), m_strLastError);
             SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
             return FALSE;
         }
@@ -1278,14 +1235,14 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
         defect.FeatureUnit = GetColumnString(hStmt, 40);
         defect.FeatureValue = GetColumnString(hStmt, 41);
         defect.ImagePath = GetColumnString(hStmt, 42);
-        //defect.XMLInfo = GetColumnString(hStmt, 43);
-        defect.ReviewResult_Worker = GetColumnString(hStmt, 43);
-        defect.ReviewResult_Machine = GetColumnString(hStmt, 44);
-        defect.MachineReviewDefectName = GetColumnString(hStmt, 45);
-        defect.DefColor = GetColumnString(hStmt, 46);
-        defect.DefColorValue = GetColumnDouble(hStmt, 47);
-        defect.DefClass_AutoReview = GetColumnString(hStmt, 48);
-        defect.DefName_AutoReview = GetColumnString(hStmt, 49);
+        defect.XMLInfo = GetColumnString(hStmt, 43);
+        defect.ReviewResult_Worker = GetColumnString(hStmt, 44);
+        defect.ReviewResult_Machine = GetColumnString(hStmt, 45);
+        defect.MachineReviewDefectName = GetColumnString(hStmt, 46);
+        defect.DefColor = GetColumnString(hStmt, 47);
+        defect.DefColorValue = GetColumnDouble(hStmt, 48);
+        defect.DefClass_AutoReview = GetColumnString(hStmt, 49);
+        defect.DefName_AutoReview = GetColumnString(hStmt, 50);
 
         nFetchCount++;
         CString strFetchLog;
@@ -1294,13 +1251,13 @@ BOOL CDBInterface::QueryDefectsByParentGUIDFromTable(const CString& strTableName
             defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height,
             (LPCTSTR)defect.Code_AOI, (LPCTSTR)defect.DefClass_AOI, (LPCTSTR)defect.DefName_AOI);
         TRACE(_T("%s\n"), (LPCTSTR)strFetchLog);
-        //theApp.m_pTestLog->Info(strFetchLog);
+        theApp.m_pTestLog->Info(strFetchLog);
 
         defects.push_back(defect);
     }
 
     TRACE(_T("[QueryDefectsByParentGUIDFromTable] Fetch completed, got %d defect records\n"), nFetchCount);
-    //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch completed, got %d defect records"), nFetchCount);
+    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUIDFromTable] Fetch completed, got %d defect records"), nFetchCount);
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
@@ -1465,25 +1422,25 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
     {
         m_strLastError = _T("Not connected to database");
         TRACE(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-        //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s"), (LPCTSTR)strParentGUID);
+        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s"), (LPCTSTR)strParentGUID);
         return FALSE;
     }
 
 	TRACE(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-    //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s"), (LPCTSTR)strParentGUID);
+    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s"), (LPCTSTR)strParentGUID);
 
     if (!QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects))
     {
         defects.clear();
         TRACE(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s\n"),
             (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
-        //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s"),
-        //    (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
+        theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s"),
+            (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
         return FALSE;
     }
 
     TRACE(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d\n"), (LPCTSTR)strParentGUID, (int)defects.size());
-    //theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
+    theApp.m_pTestLog->Info(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
     for (int i = 0; i < (int)defects.size(); i++)
     {
         const CDefectInfo& def = defects[i];
@@ -1492,48 +1449,7 @@ BOOL CDBInterface::QueryDefectsByParentGUID(const CString& strParentGUID, CDefec
             i, (LPCTSTR)def.Type, def.Pos_x, def.Pos_y, def.Pos_width, def.Pos_height,
             (LPCTSTR)def.Code_AOI, (LPCTSTR)def.DefClass_AOI, (LPCTSTR)def.DefName_AOI);
         TRACE(_T("%s\n"), (LPCTSTR)strDefLog);
-        //theApp.m_pTestLog->Info(strDefLog);
-    }
-
-    return TRUE;
-}
-
-BOOL CDBInterface::QueryDefectsByParentGUID_Vision(const CString& strParentGUID, CDefectInfoList& defects)
-{
-    defects.clear();
-
-    if (!m_bConnected)
-    {
-        m_strLastError = _T("Not connected to database");
-        TRACE(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-        theApp.m_VisionLog->Info(_T("[QueryDefectsByParentGUID] Failed: not connected to DB, ParentGUID=%s"), (LPCTSTR)strParentGUID);
-        return FALSE;
-    }
-
-	TRACE(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s\n"), (LPCTSTR)strParentGUID);
-    theApp.m_VisionLog->Info(_T("[QueryDefectsByParentGUID] Start query defects, ParentGUID=%s"), (LPCTSTR)strParentGUID);
-
-    if (!QueryDefectsByParentGUIDFromTable(_T("ivs_lcd_aoidefect"), strParentGUID, defects))
-    {
-        defects.clear();
-        TRACE(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s\n"),
-            (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
-        theApp.m_VisionLog->Info(_T("[QueryDefectsByParentGUID] Query from ivs_lcd_aoidefect table failed, ParentGUID=%s, Error=%s"),
-            (LPCTSTR)strParentGUID, (LPCTSTR)m_strLastError);
-        return FALSE;
-    }
-
-    TRACE(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d\n"), (LPCTSTR)strParentGUID, (int)defects.size());
-    theApp.m_VisionLog->Info(_T("[QueryDefectsByParentGUID] Query completed, ParentGUID=%s, defect count=%d"), (LPCTSTR)strParentGUID, (int)defects.size());
-    for (int i = 0; i < (int)defects.size(); i++)
-    {
-        const CDefectInfo& def = defects[i];
-        CString strDefLog;
-        strDefLog.Format(_T("  [Defect %d] Type=%s, Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, Code=%s, DefClass=%s, DefName=%s"),
-            i, (LPCTSTR)def.Type, def.Pos_x, def.Pos_y, def.Pos_width, def.Pos_height,
-            (LPCTSTR)def.Code_AOI, (LPCTSTR)def.DefClass_AOI, (LPCTSTR)def.DefName_AOI);
-        TRACE(_T("%s\n"), (LPCTSTR)strDefLog);
-        theApp.m_VisionLog->Info(strDefLog);
+        theApp.m_pTestLog->Info(strDefLog);
     }
 
     return TRUE;

@@ -3132,11 +3132,21 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
 
 	CString strUniqueID = _T("");
-	CIDMapInfo idMapInfo;
+	/*CIDMapInfo idMapInfo;
 	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
 	{
 		strUniqueID = idMapInfo.UniqueID;
+	}*/
+
+	CInspectionResultList results;
+	if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
+	{
+		CInspectionResult& inspResult = results.front();
+		strUniqueID = inspResult.UniqueID;
 	}
+
+	LogWrite(CStringSupport::FormatString(_T("Panel [%s] SumDFSDataStart UniqueID: %s"),
+		strQueryID, strUniqueID));
 
 	if (!strUniqueID.IsEmpty())
 	{
@@ -3581,7 +3591,7 @@ void CPlcThread::DefectCodeStart(int iNum)
 	//220316 START
 	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode End"), strPanelID, strFpcID);
 	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] End [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
-	theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
+	//theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
 	//220316 End
 
 	theApp.m_pSendDefectCodeLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
@@ -3590,7 +3600,7 @@ void CPlcThread::DefectCodeStart(int iNum)
 	theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + iNum, &pDefectGradeRank);
 	theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_DefectCodeEnd1 + iNum, OffSet_0, TRUE);
 
-
+	//theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] eBitType_DefectCodeEnd1 : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
 	/*CString strPath, strFilePath, strShift; 
 	strShift = theApp.m_lastShiftIndex == 0 ? _T("DY") : _T("NT");
 	strPath.Format(_T("%s\\%s\\%s_%s"), DATA_DEFECT_CODE_PATH, _T("AOI"), theApp.m_strCurrentToday, strShift);
@@ -3600,6 +3610,7 @@ void CPlcThread::DefectCodeStart(int iNum)
 	BOOL retVal = DeleteFile(strFilePath);*/
 
 	m_csDefectCode.Unlock();
+	//theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] m_csDefectCode.Unlock : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
 }
 
 void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
@@ -3668,11 +3679,21 @@ void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
 	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
 
 	CString strUniqueID = _T("");
-	CIDMapInfo idMapInfo;
-	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
+	//CIDMapInfo idMapInfo;
+	//if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
+	//{
+	//	strUniqueID = idMapInfo.UniqueID;
+	//}
+
+	CInspectionResultList results;
+	if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
 	{
-		strUniqueID = idMapInfo.UniqueID;
+		CInspectionResult& inspResult = results.front();
+		strUniqueID = inspResult.UniqueID;
 	}
+
+	LogWrite(CStringSupport::FormatString(_T("Panel [%s] DFSDataStart UniqueID: %s"),
+		strQueryID, strUniqueID));
 
 	if (!strUniqueID.IsEmpty())
 	{
@@ -3804,7 +3825,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 				strCodeGrade = _T("");
 		}
 		//theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
-		theApp.m_pTestLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
+		LogWrite(CStringSupport::FormatString(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID));
 	}
 	else
 	{
@@ -3821,7 +3842,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 			strCodeGrade = theApp.SetTotalLoadResultCode(strPanelID, strFpcID, Machine_AOI);
 		}
 		//theApp.m_PlcLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
-		theApp.m_pTestLog->Info(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
+		LogWrite(CStringSupport::FormatString(_T("strCodeGrade End PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID));
 	}
 
 
@@ -3848,8 +3869,8 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 		PlcSendDefect.m_strGrade = strGrade;
 		PlcSendDefect.m_iCount = theApp.m_iNumberSendToPlc;
 		theApp.SetSaveResultCode(strPanelID, strFpcID, _T("TotalDefectCode"), PlcSendDefect, iType);
-		theApp.m_pTestLog->Debug(_T("SetSaveResultCode[TotalDefectCode] PanelID : %s, strCode : %s, strGrade : %s,"),
-			strPanelID, PlcSendDefect.m_strCode, PlcSendDefect.m_strGrade);
+		LogWrite(CStringSupport::FormatString(_T("SetSaveResultCode[TotalDefectCode] PanelID : %s, strCode : %s, strGrade : %s"),
+			strPanelID, PlcSendDefect.m_strCode, PlcSendDefect.m_strGrade));
 		
 	}
 	else
@@ -3858,8 +3879,8 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 		PlcSendDefect.m_strGrade = theApp.m_strOkGrade;
 		PlcSendDefect.m_iCount = theApp.m_iNumberSendToPlc;
 		theApp.SetSaveResultCode(strPanelID, strFpcID, _T("TotalDefectCode"), PlcSendDefect, iType);
-		theApp.m_pTestLog->Debug(_T("SetSaveResultCode[TotalDefectCode] PanelID : %s, strCode : %s, strGrade : %s,"),
-			strPanelID, PlcSendDefect.m_strCode, PlcSendDefect.m_strGrade);
+		LogWrite(CStringSupport::FormatString(_T("SetSaveResultCode[TotalDefectCode] PanelID : %s, strCode : %s, strGrade : %s"),
+			strPanelID, PlcSendDefect.m_strCode, PlcSendDefect.m_strGrade));
 	}
 
 	theApp.m_Send_Result_Code_Map.clear();
@@ -3877,7 +3898,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 	BOOL bNgFlag = FALSE;
 
 	CString strCommand = (iCommand == Data_TrayOut) ? _T("TrayOut") : _T("LowerMachineOut");
-	theApp.m_pTestLog->Info(_T("[AOIInspectDataParser] === START === PanelNum[%d] Command[%s]"), iPanelNum, strCommand);
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] === START === PanelNum[%d] Command[%s]"), iPanelNum, strCommand));
 
 	if (iCommand == Data_TrayOut)
 		theApp.m_pEqIf->m_pMNetH->GetDataStatus(eWordType_TrayReportValue1 + iPanelNum, &pDataStatus);
@@ -3890,14 +3911,90 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 	iCurrentNum = pDataStatus.m_IndexNumStatus - 1;
 	strStageNum.Format(_T("%d"), iCurrentNum + 1);
 
-	theApp.m_pTestLog->Info(_T("[AOIInspectDataParser] RawData: PanelID[%s] FpcID[%s] Index[%d] CurrentNum[%d]")
-		_T(" Contact[%d] FirstContact[%d] Tp[%d] Otp[%d] Vision[%d] Viewing[%d] OkGrade[%d] TryInsert[%d]"),
-		strCell_ID, strFpc_ID, pDataStatus.m_IndexNumStatus, iCurrentNum + 1,
-		pDataStatus.m_ContactStatus, pDataStatus.m_FirstContactStatus, pDataStatus.m_TpStatus,
-		pDataStatus.m_OtpStatus, pDataStatus.m_VisionStatus, pDataStatus.m_ViewingStatus,
-		pDataStatus.m_OkGrade, pDataStatus.m_TryInsertStatus);
+	//CString strUniqueID;
+	//CInspectionResultList results;
+	//CInspectionResult inspResult;
+	//if (GetDBInterface().QueryByBarcode(strCell_ID, results) && !results.empty())
+	//{
+	//	inspResult = results.front();
+	//	strUniqueID = inspResult.UniqueID;
+	//}
 
-	theApp.m_pTestLog->Info(_T("[AOIInspectDataParser] m_codeOk=[%d] m_codeFail=[%d]"), m_codeOk, m_codeFail);
+	//int nPlcResult;
+	//if (!strUniqueID.IsEmpty() && inspResult.SysID > 0 && !inspResult.AOIResult.IsEmpty())
+	//{
+	//	if (inspResult.AOIResult.CompareNoCase(_T("OK")) == 0)
+	//		nPlcResult = m_codeOk;
+	//	else
+	//		nPlcResult = m_codeFail;
+	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser]  Step3 completed - AOIResult=%s -> nPlcResult=%d (%s)"),
+	//		 (LPCTSTR)inspResult.AOIResult, nPlcResult, nPlcResult == m_codeOk ? _T("OK") : _T("NG")), 0);
+	//}
+	//else
+	//{
+	//	//nPlcResult = (nResult == 1) ? m_codeOk : m_codeFail;
+	//	nPlcResult = m_codeOk;
+	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] No DB record")), 0);
+	//}
+
+	theApp.LoadPlcResultIndexCode(strCell_ID, strFpc_ID);
+	int iSendNGBuffer(Flow_AfterMachine);
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] m_plcFlowResultDatas.size() : %d, panel id : %s, strFpc_ID:%s"), theApp.m_plcFlowResultDatas.size(), strCell_ID, strFpc_ID));
+	//for (auto& flowData : theApp.m_plcFlowResultDatas)
+	//{
+	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second));
+	//}
+
+	//for (auto& gradeFlow : theApp.m_VecGradeFlow)
+	//{
+	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [m_VecGradeFlow] (strGrade): [%s], (iFlow): [%d]"), gradeFlow.strGrade, gradeFlow.iFlow));
+	//}
+
+	if (theApp.m_plcFlowResultDatas.size() > 0)
+	{
+		for (auto Grades : theApp.m_VecGradeFlow)
+		{
+			// m_plcFlowResultDatas  -> strGrade, strCode;
+			// theApp.m_GradeFlow -> strGrade, iFlow; // iFlow -> 1 : Flow_AfterMachine, 2 : Flow_Operator
+			map<CString, CString>::iterator iter;
+
+			iter = theApp.m_plcFlowResultDatas.find(Grades.strGrade);
+			if (iter != theApp.m_plcFlowResultDatas.end())
+			{
+				//
+				//>> psh 0414
+				//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] m_plcFlowResultDatas find panel id : %s"), strCell_ID));
+				if (theApp.m_strEqpId == "MFGAP" || theApp.m_strMachineType == "AFT")
+				{
+					//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, strCell_ID));
+					if (Grades.iFlow == Flow_Operator)
+					{
+						iSendNGBuffer = Grades.iFlow;
+						//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] iSendNGBuffer %d panel id : %s"), iSendNGBuffer, strCell_ID), 0);
+					}
+				}
+				else
+				{
+					iSendNGBuffer = Flow_Operator;
+				}
+			}
+		}
+	}
+	//for (auto saveLogs : theApp.m_plcFlowResultDatas)
+	//{
+	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] Flows Data : %s, %s, Panel ID : %s,"), saveLogs.first, saveLogs.second, strCell_ID), 0);
+	//}
+
+	theApp.m_plcFlowResultDatas.clear();
+
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] RawData: PanelID[%s] FpcID[%s] Index[%d] CurrentNum[%d]")
+	//	_T(" Contact[%d] FirstContact[%d] Tp[%d] Otp[%d] Vision[%d] Viewing[%d] OkGrade[%d] TryInsert[%d]"),
+	//	strCell_ID, strFpc_ID, pDataStatus.m_IndexNumStatus, iCurrentNum + 1,
+	//	pDataStatus.m_ContactStatus, pDataStatus.m_FirstContactStatus, pDataStatus.m_TpStatus,
+	//	pDataStatus.m_OtpStatus, pDataStatus.m_VisionStatus, pDataStatus.m_ViewingStatus,
+	//	pDataStatus.m_OkGrade, pDataStatus.m_TryInsertStatus));
+
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] m_codeOk=[%d] m_codeFail=[%d]"), m_codeOk, m_codeFail));
 
 	theApp.m_shiftProduction[iCurrentNum].m_InspectionTotal[theApp.m_lastShiftIndex]++;
 	theApp.m_UiShiftProduction[iCurrentNum].m_InspectionTotal[theApp.m_lastShiftIndex]++;
@@ -3917,7 +4014,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataContactStatus = _T("NG");
 		bNgFlag = TRUE;
-		theApp.m_pTestLog->Info(_T("[AOI] Contact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Contact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus));
 	}
 	else if (pDataStatus.m_ContactStatus == m_codeOk)
 	{
@@ -3926,12 +4023,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ContactGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataContactStatus = _T("GOOD");
-		theApp.m_pTestLog->Info(_T("[AOI] Contact GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Contact GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ContactStatus));
 	}
 	else
 	{
-		theApp.m_pTestLog->Warn(_T("[AOI] Contact UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
-			strCell_ID, pDataStatus.m_ContactStatus, m_codeOk, m_codeFail);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Contact UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"),
+		//	strCell_ID, pDataStatus.m_ContactStatus, m_codeOk, m_codeFail));
 	}
 
 	if (pDataStatus.m_FirstContactStatus == m_codeFail)
@@ -3946,7 +4043,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_FirstContactNG[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_FirstContactNG[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataFirstContactStatus = _T("NG");
-		theApp.m_pTestLog->Info(_T("[AOI] FirstContact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_FirstContactStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] FirstContact NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_FirstContactStatus));
 	}
 
 	if (pDataStatus.m_TpStatus == m_codeFail)
@@ -3962,7 +4059,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_TpNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataTpStatus = _T("NG");
 		bNgFlag = TRUE;
-		theApp.m_pTestLog->Info(_T("[AOI] TP NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] TP NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus));
 	}
 	else if (pDataStatus.m_TpStatus == m_codeOk)
 	{
@@ -3971,12 +4068,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_TpGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_TpGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataTpStatus = _T("GOOD");
-		theApp.m_pTestLog->Info(_T("[AOI] TP GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] TP GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_TpStatus));
 	}
 	else
 	{
-		theApp.m_pTestLog->Warn(_T("[AOI] TP UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
-			strCell_ID, pDataStatus.m_TpStatus, m_codeOk, m_codeFail);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] TP UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"),
+		//	strCell_ID, pDataStatus.m_TpStatus, m_codeOk, m_codeFail));
 	}
 
 	if (pDataStatus.m_OtpStatus == m_codeFail)
@@ -3992,7 +4089,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaNg[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataOtpStatus = _T("NG");
 		bNgFlag = TRUE;
-		theApp.m_pTestLog->Info(_T("[AOI] OTP/Gamma NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] OTP/Gamma NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus));
 	}
 	else if (pDataStatus.m_OtpStatus == m_codeOk)
 	{
@@ -4001,15 +4098,16 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_PreGammaGood[theApp.m_lastShiftIndex][iPanelNum]++;
 		dataItem.DataOtpStatus = _T("GOOD");
-		theApp.m_pTestLog->Info(_T("[AOI] OTP/Gamma GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] OTP/Gamma GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_OtpStatus));
 	}
 	else
 	{
-		theApp.m_pTestLog->Warn(_T("[AOI] OTP/Gamma UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
-			strCell_ID, pDataStatus.m_OtpStatus, m_codeOk, m_codeFail);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] OTP/Gamma UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"),
+		//	strCell_ID, pDataStatus.m_OtpStatus, m_codeOk, m_codeFail));
 	}
 
-	if (pDataStatus.m_VisionStatus == m_codeFail)
+	//if (pDataStatus.m_VisionStatus == m_codeFail)
+	if(iSendNGBuffer == 2 /*&& nPlcResult == 2*/)
 	{
 		theApp.m_shiftProduction[iCurrentNum].m_VisionResult[theApp.m_lastShiftIndex]++;
 		theApp.m_UiShiftProduction[iCurrentNum].m_VisionResult[theApp.m_lastShiftIndex]++;
@@ -4017,17 +4115,18 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_VisionResult[theApp.m_lastShiftIndex]++;
 		dataItem.DataVisionStatus = _T("NG");
 		bNgFlag = TRUE;
-		theApp.m_pTestLog->Info(_T("[AOI] Vision NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Vision NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus));
 	}
-	else if (pDataStatus.m_VisionStatus == m_codeOk)
+	//else if (pDataStatus.m_VisionStatus == m_codeOk)
+	else if (!(iSendNGBuffer == 2 /*&& nPlcResult == 2*/))
 	{
 		dataItem.DataVisionStatus = _T("GOOD");
-		theApp.m_pTestLog->Info(_T("[AOI] Vision GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Vision GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_VisionStatus));
 	}
 	else
 	{
-		theApp.m_pTestLog->Warn(_T("[AOI] Vision UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
-			strCell_ID, pDataStatus.m_VisionStatus, m_codeOk, m_codeFail);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Vision UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"),
+		//	strCell_ID, pDataStatus.m_VisionStatus, m_codeOk, m_codeFail));
 	}
 
 	if (pDataStatus.m_ViewingStatus == m_codeFail)
@@ -4038,17 +4137,17 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 		theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_ViewingResult[theApp.m_lastShiftIndex]++;
 		dataItem.DataViewingStatus = _T("NG");
 		bNgFlag = TRUE;
-		theApp.m_pTestLog->Info(_T("[AOI] Viewing NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Viewing NG: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus));
 	}
 	else if (pDataStatus.m_ViewingStatus == m_codeOk)
 	{
 		dataItem.DataViewingStatus = _T("GOOD");
-		theApp.m_pTestLog->Info(_T("[AOI] Viewing GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Viewing GOOD: Panel[%s] Status=[%d]"), strCell_ID, pDataStatus.m_ViewingStatus));
 	}
 	else
 	{
-		theApp.m_pTestLog->Warn(_T("[AOI] Viewing UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"), 
-			strCell_ID, pDataStatus.m_ViewingStatus, m_codeOk, m_codeFail);
+		//LogWrite(CStringSupport::FormatString(_T("[AOI] Viewing UNKNOWN: Panel[%s] Status=[%d] (not OK[%d] not Fail[%d])"),
+		//	strCell_ID, pDataStatus.m_ViewingStatus, m_codeOk, m_codeFail));
 	}
 
 	if (pDataStatus.m_TryInsertStatus == m_TrayInsert)
@@ -4116,7 +4215,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodBGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodBGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("B");
-			theApp.m_pTestLog->Info(_T("[AOI] Good Grade B: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
+			//LogWrite(CStringSupport::FormatString(_T("[AOI] Good Grade B: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade));
 		}
 		else if (pDataStatus.m_OkGrade == Panel_C_GRADE)
 		{
@@ -4125,7 +4224,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodCGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodCGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("C");
-			theApp.m_pTestLog->Info(_T("[AOI] Good Grade C: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
+			//LogWrite(CStringSupport::FormatString(_T("[AOI] Good Grade C: Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade));
 		}
 		else
 		{
@@ -4134,7 +4233,7 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 			theApp.m_UiShift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodAGradeResult[theApp.m_lastShiftIndex]++;
 			theApp.m_shift_TimeProduction[theApp.m_iTimeInspectNum].m_GoodAGradeResult[theApp.m_lastShiftIndex]++;
 			dataItem.DataOkGrade = _T("A");
-			theApp.m_pTestLog->Info(_T("[AOI] Good Grade A (default): Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade);
+			//LogWrite(CStringSupport::FormatString(_T("[AOI] Good Grade A (default): Panel[%s] Grade=[%d]"), strCell_ID, pDataStatus.m_OkGrade));
 		}
 	}
 
@@ -4223,12 +4322,12 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 	theApp.AOIInspectionTimeDataSave(theApp.m_lastShiftIndex);
 
 	CString strFinalResult = bNgFlag ? _T("NG") : _T("GOOD");
-	theApp.m_pTestLog->Info(_T("[AOIInspectDataParser] === END === Panel[%s] FinalResult[%s] bNgFlag[%d]")
-		_T(" TimeInspectNum[%d] ShiftIndex[%d]"),
-		strCell_ID, strFinalResult, bNgFlag,
-		theApp.m_iTimeInspectNum, theApp.m_lastShiftIndex);
-	theApp.m_pTestLog->Info(_T("[AOIInspectDataParser] FinalCounts: InspectTotal[+1] Good[%d] Bad[%d]"), 
-		bNgFlag ? 0 : 1, bNgFlag ? 1 : 0);
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] === END === Panel[%s] FinalResult[%s] bNgFlag[%d]")
+	//	_T(" TimeInspectNum[%d] ShiftIndex[%d]"),
+	//	strCell_ID, strFinalResult, bNgFlag,
+	//	theApp.m_iTimeInspectNum, theApp.m_lastShiftIndex));
+	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] FinalCounts: InspectTotal[+1] Good[%d] Bad[%d]"),
+	//	bNgFlag ? 0 : 1, bNgFlag ? 1 : 0));
 
 	if (iCommand == Data_TrayOut)
 		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_TrayReportEnd1 + iPanelNum, OffSet_0, TRUE);
