@@ -32,10 +32,12 @@ public:
 	void ManualStageOperatorViewStart(int iChNum);
 	void ULDInspectDataParser(int iPanelNum, int iCommand, CString strPanelID, CString strFpcID);
 	void ManualStageVecAdd(CString strPanel, CString strFpcID, int iChNum, int iMStageOrder, int iTimerNum, int iNum);
+	BOOL CheckSameAOIDefect(CString strChNum, VisionSameDefect defectList);
 
 	void OpvCommCheckMethod(int iNum);
 	BOOL m_bOpvFirstStatus[ChMaxCount];
 	CTimerCheck time_check[ChMaxCount];
-	
+	map<CString, VisionSameDefect> m_mapSameDefect;
+	CString strOpvDest, strOpvSrc;
 };
 #endif
