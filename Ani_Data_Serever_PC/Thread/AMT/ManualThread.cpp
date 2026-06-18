@@ -1089,8 +1089,8 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 					//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, TRUE);
 				}
 			}
-			theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] SameDefectMode check completed, defect count=%d"),
-				(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
+			//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] SameDefectMode check completed, defect count=%d"),
+			//	(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
 		}
 
 		OpvInfo.m_Panel_Info.strTime = GetDateString4();
@@ -1154,8 +1154,8 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 			else
 				OpvInfo.m_Panel_Info.strDefect_Result = _T("G");
 		}
-		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect_Result=%s, PreGammaContactStatus=%s"),
-			OpvInfo.m_Panel_Info.strDefect_Result, OpvInfo.m_Panel_Info.strPreGammaContactStatus));
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect_Result=%s, PreGammaContactStatus=%s"),
+		//	OpvInfo.m_Panel_Info.strDefect_Result, OpvInfo.m_Panel_Info.strPreGammaContactStatus));
 
 		if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsContactNG || _ttoi(OpvInfo.m_Panel_Info.strTpResult) == m_dfsTpNG)
 			DfsInfo.AddDefectCodeResult(strPanel, _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus), _ttoi(OpvInfo.m_Panel_Info.strTpResult), Machine_AOI);
@@ -1176,8 +1176,8 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 			ii++;
 			OpvInfo.m_Panel_Defect.push_back(defectInfo);
 		}
-		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect list built, count=%d"),
-			(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect list built, count=%d"),
+		//	(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
 
 		strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + _T("\\") + strPanel;
 		//strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + strPanelID;
@@ -1202,7 +1202,7 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 		{
 			if (::CopyFile(strOpvSrc, strOpvDest, FALSE))
 			{
-				theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD copied from Share: %s -> %s"), strOpvSrc, strOpvDest));
+				//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD copied from Share: %s -> %s"), strOpvSrc, strOpvDest));
 				bImageCopied = TRUE;
 			}
 			else
@@ -1282,7 +1282,7 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 			}
 			else
 			{
-				theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] QueryByBarcode failed for OPV image: PanelID=%s"), strPanel));
+				theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] QueryByBarcode failed for OPV image: PanelID=%s, failed: %s"), strPanel, (LPCTSTR)GetDBInterface().GetLastError()));
 			}
 		}
 
