@@ -51,7 +51,7 @@ BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, 
 			if (!AoiDfsData.LoadPanelDFSInfo(strVisionPath, AOIdfs))
 			{
 				//theApp.m_pTestLog->LOG_DEBUG(_T("reTry : %s,"), strVisionPath);
-				theApp.m_pFTPLog->Info(_T("Vision File Path Error : %s,"), strVisionPath);
+				//theApp.m_pFTPLog->Info(_T("Vision File Path Error : %s,"), strVisionPath);
 				if (i == 6/*요거도 파라미터 추가 시 파라미터 -1*/)
 					m_PanelSummaryInfo.AOI_PAENL_GRADE = _T("NG"); //Data에서 찾아서 있으면, NG로.. 20210114
 			}
@@ -1712,7 +1712,7 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 				}
 				else
 				{
-					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
+					//theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
 					if (FileExists(snedFilePath))
 					{
 						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
@@ -1753,7 +1753,7 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 			}
 			else
 			{
-				theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile (last): %s -> %s"), strTempFilePath, snedFilePath);
+				//theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage CopyFile (last): %s -> %s"), strTempFilePath, snedFilePath);
 				if (FileExists(snedFilePath))
 				{
 					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage: dest exists, delete first: %s"), snedFilePath);
@@ -1823,7 +1823,7 @@ BOOL CDFSInfo::CopyImage(CString strFilePath, CString strSendFilePath)
 				}
 				else
 				{
-					theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
+					//theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2 CopyFile: %s -> %s"), strTempFilePath, snedFilePath);
 					if (FileExists(snedFilePath))
 					{
 						theApp.m_pFTPLog->Debug(_T("[DFS] CopyImage2: dest exists, delete first: %s"), snedFilePath);
