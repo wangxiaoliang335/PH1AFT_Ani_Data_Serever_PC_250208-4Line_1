@@ -1020,10 +1020,19 @@ CString CDBInterface::GetSelectLatestByUniqueIDSQL(const CString& strUniqueID) c
 {
     CString strSQL;
     strSQL.Format(
-        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
+        _T("SELECT SysID, GUID, ScreenID, PlatformID, UniqueID, AOIResult, Code_AOI, Grade_AOI, GridImageXLen, GridImageYLen, PanelPhysicalXLen, PanelPhysicalYLen FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
         EscapeString(strUniqueID));
     return strSQL;
 }
+
+//CString CDBInterface::GetSelectLatestByUniqueIDSQL(const CString& strUniqueID) const
+//{
+//    CString strSQL;
+//    strSQL.Format(
+//        _T("SELECT * FROM IVS_LCD_InspectionResult WHERE UniqueID = '%s' ORDER BY SysID DESC LIMIT 1"),
+//        EscapeString(strUniqueID));
+//    return strSQL;
+//}
 
 BOOL CDBInterface::UpsertIDMap(const CInspectionResult& result)
 {
@@ -1615,20 +1624,60 @@ BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult
     result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
     result.GUID = GetColumnString(hStmt, 2);
     result.ScreenID = GetColumnString(hStmt, 3);
-    result.PlatformID = GetColumnInt(hStmt, 5);    // 5: PlatformID
-    result.UniqueID = GetColumnString(hStmt, 19);   // 19: UniqueID
-    result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
-    result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
-    result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
+    result.PlatformID = GetColumnInt(hStmt, 4);    // 5: PlatformID
+    result.UniqueID = GetColumnString(hStmt, 5);   // 19: UniqueID
+    result.AOIResult = GetColumnString(hStmt, 6);     // 12: AOIResult
+    result.Code_AOI = GetColumnString(hStmt, 7);     // 44: Code_AOI
+    result.Grade_AOI = GetColumnString(hStmt, 8);     // 45: Grade_AOI
     // 30: GridImageXLen, 31: GridImageYLen, 32: PanelPhysicalXLen, 33: PanelPhysicalYLen
-    result.GridImageXLen = GetColumnInt(hStmt, 30);
-    result.GridImageYLen = GetColumnInt(hStmt, 31);
-    result.PanelPhysicalXLen = GetColumnDouble(hStmt, 32);
-    result.PanelPhysicalYLen = GetColumnDouble(hStmt, 33);
+    result.GridImageXLen = GetColumnInt(hStmt, 9);
+    result.GridImageYLen = GetColumnInt(hStmt, 10);
+    result.PanelPhysicalXLen = GetColumnDouble(hStmt, 11);
+    result.PanelPhysicalYLen = GetColumnDouble(hStmt, 12);
 
     SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     return TRUE;
 }
+
+//BOOL CDBInterface::QueryByUniqueID(const CString& strUniqueID, CInspectionResult& result)
+//{
+//    CString strSQL = GetSelectLatestByUniqueIDSQL(strUniqueID);
+//
+//    SQLHSTMT hStmt;
+//    if (!ExecuteQuery(strSQL, hStmt))
+//        return FALSE;
+//
+//    SQLRETURN ret = SQLFetch(hStmt);
+//    if (ret == SQL_NO_DATA)
+//    {
+//        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//        return FALSE;
+//    }
+//
+//    if (ret == SQL_ERROR)
+//    {
+//        m_strLastError = GetODBCError(SQL_HANDLE_STMT, hStmt);
+//        SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//        return FALSE;
+//    }
+//
+//    result.SysID = GetColumnInt(hStmt, 1);         // 1: SysID
+//    result.GUID = GetColumnString(hStmt, 2);
+//    result.ScreenID = GetColumnString(hStmt, 3);
+//    result.PlatformID = GetColumnInt(hStmt, 5);    // 5: PlatformID
+//    result.UniqueID = GetColumnString(hStmt, 19);   // 19: UniqueID
+//    result.AOIResult = GetColumnString(hStmt, 12);     // 12: AOIResult
+//    result.Code_AOI = GetColumnString(hStmt, 44);     // 44: Code_AOI
+//    result.Grade_AOI = GetColumnString(hStmt, 45);     // 45: Grade_AOI
+//    // 30: GridImageXLen, 31: GridImageYLen, 32: PanelPhysicalXLen, 33: PanelPhysicalYLen
+//    result.GridImageXLen = GetColumnInt(hStmt, 30);
+//    result.GridImageYLen = GetColumnInt(hStmt, 31);
+//    result.PanelPhysicalXLen = GetColumnDouble(hStmt, 32);
+//    result.PanelPhysicalYLen = GetColumnDouble(hStmt, 33);
+//
+//    SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+//    return TRUE;
+//}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Query IVS_LCD_IDMap by MarkID (jig/station number) to get UniqueID/ScreenID
@@ -1797,7 +1846,7 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
 
     CString strSQL;
     strSQL.Format(
-        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, LocalIP, UniqueID, AOIResult, Grade_AOI, StartTime ")
+        _T("SELECT SysID, GUID, ScreenID, DeviceID, PlatformID, LocalIP, UniqueID, AOIResult, Grade_AOI, StartTime, Code_AOI ")
         _T("FROM IVS_LCD_InspectionResult WHERE ScreenID = '%s' ORDER BY StartTime DESC"),
         EscapeString(strBarcode));
 
@@ -1832,7 +1881,7 @@ BOOL CDBInterface::QueryByBarcode(const CString& strBarcode, CInspectionResultLi
         if (nDot >= 0)
             strStartTime = strStartTime.Left(nDot);  // 去掉毫秒部分
         result.StartTime.ParseDateTime(strStartTime);
-
+        result.Code_AOI = GetColumnString(hStmt, 11);
         results.push_back(result);
     }
 
