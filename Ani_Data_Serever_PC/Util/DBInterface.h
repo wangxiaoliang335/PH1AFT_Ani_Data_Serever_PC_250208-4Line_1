@@ -160,9 +160,10 @@ public:
     // Escape SQL string
     static CString EscapeString(const CString& str);
 
-protected:
     // Ensure thread has a valid connection (call before each DB operation)
     BOOL EnsureThreadConnection();
+
+protected:
 
     // Execute SQL statement
     BOOL ExecuteSQL(const CString& strSQL);

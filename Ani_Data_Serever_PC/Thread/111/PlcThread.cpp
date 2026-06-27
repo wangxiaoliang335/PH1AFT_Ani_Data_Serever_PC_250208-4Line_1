@@ -1545,10 +1545,6 @@ UINT CPlcThread::PlcThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 线程创建时提前初始化数据库连接（TLS）
-	GetDBInterface().EnsureThreadConnection();
-
 	pThis->ThreadRun();
 	return 1L;
 
@@ -1665,9 +1661,6 @@ UINT CPlcThread::HeartBitThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 心跳线程不需要数据库连接
-
 	pThis->HeartBitThreadRun();
 	return 1L;
 
@@ -1676,9 +1669,6 @@ UINT CPlcThread::TactPlcThreadProc(LPVOID pParam)
 {
 	CPlcThread* pThis = reinterpret_cast<CPlcThread*>(pParam);
 	_ASSERTE(pThis != NULL);
-
-	// 节拍线程不需要数据库连接
-
 	pThis->TactThreadRun();
 	return 1L;
 
@@ -1730,7 +1720,7 @@ void  CPlcThread::LogWrite(CString strContents, BOOL bAddListBox)
 	theApp.m_PlcLog->Info(strContents);
 
 	// 通过 PostMessage 发送到 UI 线程更新 ListBox（避免跨线程操作 MFC 控件）
-	/*if (bAddListBox)
+	if (bAddListBox)
 	{
 		CString* pStrLog = new CString(strContents);
 		if (g_MainLog && g_MainLog->m_hWnd)
@@ -1741,7 +1731,7 @@ void  CPlcThread::LogWrite(CString strContents, BOOL bAddListBox)
 		{
 			delete pStrLog;
 		}
-	}*/
+	}
 }
 
 void CPlcThread::ProgramStartStopLog()
@@ -3147,21 +3137,11 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
 
 	CString strUniqueID = _T("");
-	/*CIDMapInfo idMapInfo;
+	CIDMapInfo idMapInfo;
 	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
 	{
 		strUniqueID = idMapInfo.UniqueID;
-	}*/
-
-	CInspectionResultList results;
-	if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
-	{
-		CInspectionResult& inspResult = results.front();
-		strUniqueID = inspResult.UniqueID;
 	}
-
-	//LogWrite(CStringSupport::FormatString(_T("Panel [%s] SumDFSDataStart UniqueID: %s"),
-	//	strQueryID, strUniqueID));
 
 	if (!strUniqueID.IsEmpty())
 	{
@@ -3204,18 +3184,15 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	if (pDfsDateValue.m_PanelID.IsEmpty())
 		pDfsDateValue.m_PanelID = pDfsDateValue.m_FpcID;
 
-	//if (iOkNg == OKPanel)
-	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start OK"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	//else
-	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start NG"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	//if (iType == Machine_AOI)
-	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	//else
-	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_ULD"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	if (!strUniqueID.IsEmpty())
-	{
-		theApp.m_pFTP->DfsAddTransferFile(pDfsDateValue);
-	}
+	if (iOkNg == OKPanel)
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start OK"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	else
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start NG"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	if (iType == Machine_AOI)
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	else
+		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_ULD"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	theApp.m_pFTP->DfsAddTransferFile(pDfsDateValue);
 #if _SYSTEM_AMTAFT_
 	if(iType == Machine_AOI)
 		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP END iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
@@ -3576,7 +3553,7 @@ void CPlcThread::DefectCodeStart(int iNum)
 	//220316 End
 	CString strCodeGrade = theApp.SetTotalLoadResultCode(strPanelID, strFpcID, Machine_AOI);
 
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] Start [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] Start [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
 
 	if (strCodeGrade.IsEmpty() == FALSE)
 	{
@@ -3609,10 +3586,10 @@ void CPlcThread::DefectCodeStart(int iNum)
 	//220316 START
 	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode End"), strPanelID, strFpcID);
 	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] End [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
-	//theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
+	theApp.m_PlcLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
 	//220316 End
 
-	theApp.m_pSendDefectCodeLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
+	//theApp.m_pSendDefectCodeLog->Info(_T("[AOI] Panel : [%s][%s] SendPlcDefectCode : [%s][%s]"), strPanelID, strFpcID, strCode, strGrade);
 
 	theApp.m_pEqIf->m_pMNetH->SetDefectRankData(eWordType_DefectCodeResult1 + iNum, &pDefectCodeRank);
 	theApp.m_pEqIf->m_pMNetH->SetDefectGradeRankData(eWordType_DefectGradeResult1 + iNum, &pDefectGradeRank);
@@ -3697,21 +3674,11 @@ void CPlcThread::DFSDataStart(int iNum, int iOkNg, int iType)
 	CString strQueryID = strPanelID.IsEmpty() ? strFpcID : strPanelID;
 
 	CString strUniqueID = _T("");
-	//CIDMapInfo idMapInfo;
-	//if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
-	//{
-	//	strUniqueID = idMapInfo.UniqueID;
-	//}
-
-	CInspectionResultList results;
-	if (GetDBInterface().QueryByBarcode(strPanelID, results) && !results.empty())
+	CIDMapInfo idMapInfo;
+	if (GetDBInterface().QueryIDMapByPanelID(strQueryID, idMapInfo))
 	{
-		CInspectionResult& inspResult = results.front();
-		strUniqueID = inspResult.UniqueID;
+		strUniqueID = idMapInfo.UniqueID;
 	}
-
-	//LogWrite(CStringSupport::FormatString(_T("Panel [%s] DFSDataStart UniqueID: %s"),
-	//	strQueryID, strUniqueID));
 
 	if (!strUniqueID.IsEmpty())
 	{
