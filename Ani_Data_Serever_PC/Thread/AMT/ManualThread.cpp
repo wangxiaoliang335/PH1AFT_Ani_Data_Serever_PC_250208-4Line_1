@@ -4,6 +4,9 @@
 #include "DlgMainLog.h"
 #include "ManualThread.h"
 #include "DataInfo.h"
+#include "DFS/DFSInfo.h"
+
+#define DEFAULT_MANUAL_MAIN_AOI_IMAGE_ROOT _T("D:\\MEMS_DFS_Data\\")
 
 CManualThread::CManualThread()
 {
@@ -921,12 +924,103 @@ void CManualThread::ULDInspectDataParser(int iPanelNum, int iCommand, CString st
 	theApp.m_PlcThread->m_csData.Unlock();
 }
 
+BOOL CManualThread::CheckSameAOIDefect(CString strChNum, VisionSameDefect defectList)
+{
+	BOOL bOverDefectCount(TRUE);
+	map<CString, VisionSameDefect>::iterator iter;
+
+	CString strKey = CStringSupport::FormatString(_T("%s^%s"), defectList.m_strChNum, defectList.m_strDefectCode);
+	CString strCode, strCh;
+	CStringArray responseTokens;
+	CStringSupport::GetTokenArray(strKey, _T('^'), responseTokens);
+
+	if (responseTokens.GetSize() < 2)
+	{
+		//theApp.m_pFTPLog->Warn(_T("[SameDefectCheck] strKey=%s TokenCount=%d 不足2个，跳过"),
+		//	strKey, responseTokens.GetSize());
+		return FALSE;
+	}
+	strCh = responseTokens[0];
+	strCode = responseTokens[1];
+
+	if (!strCode.IsEmpty())
+	{
+		theApp.m_iTotalCompareCount++;
+
+		iter = m_mapSameDefect.find(strKey);
+		if (iter != m_mapSameDefect.end())
+		{
+			if (theApp.m_bSameDefectChCheckMode == TRUE)
+			{
+				if (!iter->second.m_strChNum.CompareNoCase(strCh) && !theApp.m_strSameDefectCode.CompareNoCase(strCode) &&
+					iter->second.m_strPanelID.CompareNoCase(defectList.m_strPanelID))
+				{
+					iter->second.m_iSameDefectCount++;
+					m_mapSameDefect.insert(make_pair(strKey, iter->second));
+
+					if (iter->second.m_iSameDefectCount >= _ttoi(theApp.m_strSameDefectAlarmMaxCount))
+					{
+						CString strMsg = CStringSupport::FormatString(_T("Panel [%s][%s] Same NG Over %s Count, DefectCode : %s, ChNum : %s"),
+							iter->second.m_strPanelID, iter->second.m_strFpcID, theApp.m_strSameDefectAlarmMaxCount, iter->second.m_strDefectCode, iter->second.m_strChNum);
+
+						theApp.m_pTraceLog->Debug(strMsg);
+
+						theApp.m_pMsgBoxAlarm->WaitShowHide(SW_SHOW, strMsg);
+						//theApp.getMsgBox(MS_OK, strMsg, strMsg, strMsg);
+						m_mapSameDefect.clear();
+						theApp.m_iTotalCompareCount = 0;
+						bOverDefectCount = FALSE;
+					}
+				}
+			}
+			else
+			{
+				if (!theApp.m_strSameDefectCode.CompareNoCase(strCode) && iter->second.m_strPanelID.CompareNoCase(defectList.m_strPanelID))
+				{
+					iter->second.m_iSameDefectCount++;
+					m_mapSameDefect.insert(make_pair(strKey, iter->second));
+
+					if (iter->second.m_iSameDefectCount >= _ttoi(theApp.m_strSameDefectAlarmMaxCount))
+					{
+						CString strMsg = CStringSupport::FormatString(_T("Panel [%s][%s] Same NG Over %s Count, DefectCode : %s"),
+							iter->second.m_strPanelID, iter->second.m_strFpcID, theApp.m_strSameDefectAlarmMaxCount, iter->second.m_strDefectCode);
+						theApp.m_pTraceLog->Debug(strMsg);
+						theApp.m_pMsgBoxAlarm->WaitShowHide(SW_SHOW, strMsg);
+						//theApp.getMsgBox(MS_OK, strMsg, strMsg, strMsg);
+						m_mapSameDefect.clear();
+						theApp.m_iTotalCompareCount = 0;
+						bOverDefectCount = FALSE;
+					}
+				}
+			}
+		}
+		else
+		{
+			if (!theApp.m_strSameDefectCode.CompareNoCase(strCode))
+			{
+				defectList.m_iSameDefectCount = 1;
+				m_mapSameDefect.insert(make_pair(strKey, defectList));
+			}
+		}
+
+		if (theApp.m_iTotalCompareCount >= _ttoi(theApp.m_strSameDefectMaxCount))
+		{
+			theApp.m_iTotalCompareCount = 0;
+			m_mapSameDefect.clear();
+		}
+	}
+
+	return bOverDefectCount;
+}
+
 void CManualThread::ManualStageOperatorViewStart(int iChNum)
 {
+	CDFSInfo DfsInfo;
 	PanelData pPanelData;
 	FpcIDData pFpcData;
 	CDataInfo OpvInfo;
 	CString strPanel = _T(""), strFpcID = _T("");
+	CString strSumImagePath, strTemp1;
 	BOOL bClear = FALSE;
 	long bBufferTrayFlag = 0;
 
@@ -958,6 +1052,253 @@ void CManualThread::ManualStageOperatorViewStart(int iChNum)
 	{
 		strPanel = strFpcID;
 		//strPanel = "AHF542705AAE3";
+	}
+
+	CString strOPVPath = DFS_SHARE_OPV_PATH + GetDateString2() + _T("\\") + strPanel;
+	CString strTxtPath = CStringSupport::FormatString(_T("%s\\%s.txt"), strOPVPath, strPanel);
+	//CString strOpvPath = strOPVPath + _T("\\") + _T("AddsrcImageADD.jpg");
+	theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] strTxtPath: %s"), strTxtPath));
+
+	if (strPanel.IsEmpty() == FALSE && !FileExists(strTxtPath))
+	{
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Processing PanelID: %s, FPCID: %s"), strPanel, strFpcID));
+
+		DfsInfo.IndexZoneInspResultInfo(strPanel);
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] IndexZoneInspResultInfo completed for PanelID: %s"), strPanel));
+
+		if (!DfsInfo.VisionLoadPanelDFSInfo(strPanel, Machine_AOI)) // 이건 OPV .txt 파일 용입니다.
+			theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] OPV Vision Dfs File Path Error : %s,"), strPanel));
+		else
+			theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] VisionLoadPanelDFSInfo SUCCESS for PanelID: %s"), strPanel));
+
+		if (theApp.m_bSameDefectMode == TRUE)
+		{
+			for (auto AoiDefect : DfsInfo.m_OpvDataList[Machine_AOI])
+			{
+				VisionSameDefect DefectInfo;
+				DefectInfo.m_strDefectCode = AoiDefect.strDefect_code;
+				DefectInfo.m_strPanelID = AoiDefect.strPanel_ID;
+				//DefectInfo.m_strChNum = dfsData.m_ChNum;
+				DefectInfo.m_strChNum.Format(_T("%d"), iChNum);
+				DefectInfo.m_strFpcID = AoiDefect.strFpc_ID;
+
+				if (!CheckSameAOIDefect(DefectInfo.m_strChNum, DefectInfo))
+				{
+					theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] SameDefectMode check fail, defect count=%d"),
+						(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
+					//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, TRUE);
+				}
+			}
+			//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] SameDefectMode check completed, defect count=%d"),
+			//	(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
+		}
+
+		OpvInfo.m_Panel_Info.strTime = GetDateString4();
+		OpvInfo.m_Panel_Info.strPanel_ID = DfsInfo.m_PanelDataBegin.strPanel_ID;
+		OpvInfo.m_Panel_Info.strFpc_ID = strFpcID;
+		OpvInfo.m_Panel_Info.strPanel_Width = theApp.m_strOpvImageWidth;
+		OpvInfo.m_Panel_Info.strPanel_Hegiht = theApp.m_strOpvImageHeight;
+		//OpvInfo.m_Panel_Info.strPreGammaContactStatus = dfsData.m_PreGammaContactStatus;
+		//OpvInfo.m_Panel_Info.strModel_ID = dfsData.m_ModelID;
+		//OpvInfo.m_Panel_Info.strIndexNum = dfsData.m_IndexNum;
+		//OpvInfo.m_Panel_Info.strChNum = dfsData.m_ChNum;
+		OpvInfo.m_Panel_Info.strChNum.Format(_T("%d"), iChNum); 
+		OpvInfo.m_Panel_Info.strVisionResult = DfsInfo.m_strVisionResult;
+		OpvInfo.m_Panel_Info.strViewingResult = DfsInfo.m_strViewingResult;
+		//OpvInfo.m_Panel_Info.strTpResult = dfsData.m_TpResult;
+		OpvInfo.m_Panel_Info.strLumitopResult = DfsInfo.m_strLumitopResult;
+		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] OpvInfo Panel_Info set: VisionResult=%s, ViewingResult=%s, LumitopResult=%s"),
+			OpvInfo.m_Panel_Info.strVisionResult, OpvInfo.m_Panel_Info.strViewingResult, OpvInfo.m_Panel_Info.strLumitopResult));
+
+		//>> Summery_data 220112 psh
+		CString strFilePath;
+		strTemp1 = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanel;
+		CreateFolders(strTemp1);
+		strFilePath = CStringSupport::FormatString(_T("%s\\%s.txt"), strTemp1, strPanel);
+		EZIni ini(strFilePath);
+		//ini[_T("Sumeery_data")][_T("AOI")] = dfsData.m_AOIInpsect;
+		//ini[_T("Sumeery_data")][_T("CONTACT")] = dfsData.m_Contact;
+		//ini[_T("Sumeery_data")][_T("PREGAMMA")] = dfsData.m_PreGamma;
+		//ini[_T("Sumeery_data")][_T("TP")] = dfsData.m_TpResult;
+		//ini[_T("Sumeery_data")][_T("LUMITOP")] = dfsData.m_Lumitop;
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[FTP] Summary data written: AOI=%s, TP=%s, LUMITOP=%s"),
+		//	dfsData.m_AOIInpsect, dfsData.m_TpResult, dfsData.m_Lumitop));
+
+		if (theApp.m_iMachineType == SetAMT)
+		{
+			if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsContactNG)
+			{
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("N");
+			}
+			else if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsPreGammaNG
+				|| OpvInfo.m_Panel_Info.strVisionResult == _T("N")
+				|| OpvInfo.m_Panel_Info.strViewingResult == _T("N"))
+			{
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("N");
+			}
+			else
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("G");
+		}
+		else
+		{
+			if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsContactNG)
+			{
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("N");
+			}
+			else if (OpvInfo.m_Panel_Info.strVisionResult == _T("N") ||
+				OpvInfo.m_Panel_Info.strViewingResult == _T("N") ||
+				OpvInfo.m_Panel_Info.strLumitopResult == _T("N"))
+			{
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("N");
+			}
+			else
+				OpvInfo.m_Panel_Info.strDefect_Result = _T("G");
+		}
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect_Result=%s, PreGammaContactStatus=%s"),
+		//	OpvInfo.m_Panel_Info.strDefect_Result, OpvInfo.m_Panel_Info.strPreGammaContactStatus));
+
+		if (_ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsPreGammaNG || _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus) == m_dfsContactNG || _ttoi(OpvInfo.m_Panel_Info.strTpResult) == m_dfsTpNG)
+			DfsInfo.AddDefectCodeResult(strPanel, _ttoi(OpvInfo.m_Panel_Info.strPreGammaContactStatus), _ttoi(OpvInfo.m_Panel_Info.strTpResult), Machine_AOI);
+
+		int ii = 1;
+		for (auto defect : DfsInfo.m_OpvDataList[Machine_AOI])
+		{
+			SDataDefectInfo defectInfo;
+			defectInfo.strNo = CStringSupport::FormatString(_T("%d"), ii);
+			defectInfo.strInspName = defect.strInspName;
+			defectInfo.strDefect_Code = defect.strDefect_code;
+			defectInfo.strDefect_Pattern = defect.strDefect_Ptn;
+			defectInfo.strDefect_StartX = defect.strData_X1;
+			defectInfo.strDefect_StartY = defect.strGate_Y1;
+			defectInfo.strDefect_EndX = defect.strData_X2;
+			defectInfo.strDefect_EndY = defect.strGate_Y2;
+			defectInfo.strDefect_Grade = defect.strDefect_Grade;
+			ii++;
+			OpvInfo.m_Panel_Defect.push_back(defectInfo);
+		}
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Defect list built, count=%d"),
+		//	(int)DfsInfo.m_OpvDataList[Machine_AOI].size()));
+
+		strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + _T("\\") + strPanel;
+		//strTemp1 = DFS_SHARE_OPV_PATH + GetDateString2() + strPanelID;
+		CreateFolders(strTemp1);
+		//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] OPV folder created: %s"), strTemp1));
+
+		strSumImagePath = DFS_SHARE_PATH + GetDateString2() + _T("\\") + strPanel + _T("\\AOI\\Image");
+		strOpvSrc = strSumImagePath + _T("\\") + _T("AddsrcImageADD.jpg");
+		strOpvDest = strTemp1 + _T("\\") + _T("AddsrcImageADD.jpg");
+		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Image copy path: src=%s, dest=%s"), strOpvSrc, strOpvDest));
+
+		strTemp1 = strTemp1 + _T("\\") + strPanel + _T(".txt");
+		BOOL bRet = OpvInfo.SetSaveFile(strTemp1);
+		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] OPV txt file path: %s, return: %d"), strTemp1, bRet));
+
+		//::CopyFile(strOpvSrc, strOpvDest, FALSE); //image 업로드
+
+		// 优先从 D:\Data\Share\...\AOI\Image\AddsrcImageADD.jpg 获取（DFS线程已生成的）
+		// 如果不存在，则从 AOI 检测服务器 D:\MEMS_DFS_Data\MainAOI\... 直接获取 MarkImg.jpg 并重命名
+		BOOL bImageCopied = FALSE;
+		if (FileExists(strOpvSrc))
+		{
+			if (::CopyFile(strOpvSrc, strOpvDest, FALSE))
+			{
+				//theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD copied from Share: %s -> %s"), strOpvSrc, strOpvDest));
+				bImageCopied = TRUE;
+			}
+			else
+			{
+				theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD CopyFile FAILED (Share): src=%s, dest=%s, error=%d"),
+					strOpvSrc, strOpvDest, GetLastError()));
+			}
+		}
+
+		// Share路径没有图片，则直接从AOI检测服务器获取
+		if (!bImageCopied && GetDBInterface().IsConnected())
+		{
+			CInspectionResultList results;
+			if (GetDBInterface().QueryByBarcode(strPanel, results) && !results.empty())
+			{
+				CInspectionResult& insp = results.front();
+				CDefectInfoList defectList;
+				CString strAoiImageDir;
+
+				// 方式1：从缺陷表 ImagePath 提取目录
+				if (GetDBInterface().QueryDefectsByParentGUID(insp.GUID, defectList))
+				{
+					for (const auto& defect : defectList)
+					{
+						if (!defect.ImagePath.IsEmpty())
+						{
+							CString strSrcPath = defect.ImagePath;
+							// 判断绝对路径
+							BOOL bAbs = (strSrcPath.GetLength() >= 3 && strSrcPath.GetAt(1) == ':' && strSrcPath.GetAt(2) == '\\');
+							if (!bAbs)
+								strSrcPath = DEFAULT_MANUAL_MAIN_AOI_IMAGE_ROOT + defect.ImagePath;
+							int nSlash = max(strSrcPath.ReverseFind('\\'), strSrcPath.ReverseFind('/'));
+							if (nSlash >= 0)
+								strAoiImageDir = strSrcPath.Left(nSlash);
+							if (!strAoiImageDir.IsEmpty() && PathIsDirectory(strAoiImageDir))
+								break;
+							strAoiImageDir.Empty();
+						}
+					}
+				}
+
+				// 方式2：从数据库字段构建路径
+				if (strAoiImageDir.IsEmpty() && !insp.LocalIP.IsEmpty() && insp.PlatformID >= 0)
+				{
+					CString strIdx, strDate;
+					strIdx.Format(_T("%d"), insp.PlatformID + 1);
+					strDate = insp.StartTime.Format(_T("%Y-%m-%d"));
+					strAoiImageDir.Format(_T("%sMainAOI\\%s\\%s\\%s\\%s"),
+						DEFAULT_MANUAL_MAIN_AOI_IMAGE_ROOT, (LPCTSTR)insp.LocalIP,
+						(LPCTSTR)strIdx, (LPCTSTR)strDate, (LPCTSTR)strPanel);
+					theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Built AoiImageDir from DB: %s"), strAoiImageDir));
+				}
+
+				// 从 AOI 服务器复制 MarkImg.jpg → AddsrcImageADD.jpg
+				if (!strAoiImageDir.IsEmpty())
+				{
+					CString strMarkSrc = strAoiImageDir + _T("\\MarkImg.jpg");
+					theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] Trying MarkImg from AOI server: %s"), strMarkSrc));
+					if (FileExists(strMarkSrc))
+					{
+						if (::CopyFile(strMarkSrc, strOpvDest, FALSE))
+						{
+							theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD copied from AOI server: %s -> %s"), strMarkSrc, strOpvDest));
+							bImageCopied = TRUE;
+						}
+						else
+						{
+							theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD CopyFile FAILED (AOI server): src=%s, dest=%s, error=%d"),
+								strMarkSrc, strOpvDest, GetLastError()));
+						}
+					}
+					else
+					{
+						theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] MarkImg.jpg not found on AOI server: %s"), strMarkSrc));
+					}
+				}
+			}
+			else
+			{
+				theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] QueryByBarcode failed for OPV image: PanelID=%s, failed: %s"), strPanel, (LPCTSTR)GetDBInterface().GetLastError()));
+			}
+		}
+
+		if (!bImageCopied)
+		{
+			theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[OPV] AddsrcImageADD copy SKIPPED - image not available: PanelID=%s"), strPanel));
+		}
+		//theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_VisionSameDefectAlarmStart, OffSet_0, FALSE);
+	}
+
+	if (!FileExists(strTxtPath))
+	{
+		theApp.m_pEqIf->m_pMNetH->SetPlcWordData(eWordType_MStageAOperatorViewResult + iChNum, &m_codePlcSendReceiverError);
+		theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_MStageA_OperatorViewEnd + iChNum, OffSet_0, TRUE);
+		theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[Ch%d] OPV No Txt"), iChNum + 1));
+		return;
 	}
 
 	theApp.m_OpvSocketManager[iChNum].OpvLogMessage(CStringSupport::FormatString(_T("[%s] OPV Start Panel [%s][%s]"), ULD_PG_IndexName[iChNum], strPanel, strFpcID));

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="_SYSTEM_AMTAFT_|Win32">
@@ -142,9 +142,9 @@
     <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='_SYSTEM_AMTAFT_|x64'">
-    <IncludePath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64-debug\include;D:\ZSDK\OpenCV;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\mysql-connector-c++-9.6.0-winx64-debug\include;D:\ZSDK\OpenCV\include\opencv;D:\ZSDK\OpenCV\include;$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64-debug\lib64\debug\vs14;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\mysql-connector-c++-9.6.0-winx64-debug\lib64\debug\vs14;D:\ZSDK\OpenCV\lib;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
     <OutDir>D:\\ANI\\DataServer\\Bin</OutDir>
   </PropertyGroup>
@@ -281,7 +281,7 @@ copy /Y "$(ProjectDir)..\mysql-connector-c++-9.6.0-winx64\lib64\libssl-3-x64.dll
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64\vs14;E:\CSOT_PH1_AFT151_CAMERA\5. PH1AFT_Ani_Data_Serever_PC_250208-4Line\mysql-connector-c++-9.6.0-winx64\lib64;.\Melsec;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\bin;E:\CSOT_PH1_AFT151_CAMERA\opencv\build\x64\vc12\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>odbc32.lib;mysqlcppconn.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;opencv_core249.lib;opencv_imgproc249.lib;opencv_highgui249.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Midl>

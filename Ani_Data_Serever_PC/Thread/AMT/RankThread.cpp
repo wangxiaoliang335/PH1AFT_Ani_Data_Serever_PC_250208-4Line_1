@@ -62,7 +62,7 @@ void CRankThread::ThreadRun()
 						if (responseTokens.GetSize() < 5)
 						{
 							theApp.m_pTraceLog->LOG_INFO(_T("**************** Defect Code Parser Size Error ****************"));
-							theApp.m_pTestLog->LOG_INFO(_T("**************** Defect Code Parser Size Error ****************"));
+							//theApp.m_pTestLog->LOG_INFO(_T("**************** Defect Code Parser Size Error ****************"));
 						}
 						else
 						{
@@ -98,7 +98,7 @@ void CRankThread::ThreadRun()
 									{
 										// 文件还没出现，等100ms再试
 										Delay(100, TRUE);
-										theApp.m_pTestLog->LOG_DEBUG(_T("Rank File Path Error : %s,"), strPath);
+										//theApp.m_pTestLog->LOG_DEBUG(_T("Rank File Path Error : %s,"), strPath);
 										continue;
 									}
 								}
@@ -130,7 +130,7 @@ void CRankThread::ThreadRun()
 									// CSV 中 DEFECT_CODE 仍为空（ICW 缺陷坐标尚未写入 DB）
 									// 等100ms后重新读取同一个 CSV 文件
 									Delay(100, TRUE);
-									theApp.m_pTestLog->LOG_DEBUG(_T("Rank DEFECT_DATA Empty, Re-read CSV : %s,"), strFinalPath);
+									//theApp.m_pTestLog->LOG_DEBUG(_T("Rank DEFECT_DATA Empty, Re-read CSV : %s,"), strFinalPath);
 								}
 							}
 						}
@@ -165,11 +165,11 @@ void CRankThread::ThreadRun()
 							{*/
 								mapCode.insert(make_pair(strCodeTemp, _T("R1")));
 								DfsInfo.m_mapPanelDefect.insert(make_pair(strInspName, mapCode));
-								theApp.m_pTestLog->LOG_DEBUG(_T("DfsInfo.m_mapPanelDefect.insert  strPanelID :  strInspName : %s, mapCode : %s"), strPanelID, strInspName, mapCode);
+								//theApp.m_pTestLog->LOG_DEBUG(_T("DfsInfo.m_mapPanelDefect.insert  strPanelID :  strInspName : %s, mapCode : %s"), strPanelID, strInspName, mapCode);
 							//}
 						}
 
-						theApp.m_pTestLog->LOG_INFO(_T("RankSave InspName : %s,"), strInspName);
+						//theApp.m_pTestLog->LOG_INFO(_T("RankSave InspName : %s,"), strInspName);
 					}
 				}
 				else
@@ -203,8 +203,8 @@ void CRankThread::ThreadRun()
 								defectinfo.m_iCount++;
 
 								theApp.SetSaveResultCode(strPanelID, strFpcID, strInspName, defectinfo, Machine_AOI);
-								theApp.m_pTestLog->LOG_DEBUG(_T("RankSaveResultCode PanelID : %s, FPCID : %s, InspName : %s, strCode : %s, strGrade : %s,"),
-									strPanelID, strFpcID, strInspName, defectinfo.m_strCode, defectinfo.m_strGrade);
+								//theApp.m_pTestLog->LOG_DEBUG(_T("RankSaveResultCode PanelID : %s, FPCID : %s, InspName : %s, strCode : %s, strGrade : %s,"),
+								//	strPanelID, strFpcID, strInspName, defectinfo.m_strCode, defectinfo.m_strGrade);
 							}
 						}
 						
@@ -218,7 +218,7 @@ void CRankThread::ThreadRun()
 				}
 				else
 				{
-					theApp.m_pTestLog->LOG_INFO(_T("**************** PanelID [%s] FpcID [%s] SendPlcCode size error ****************"), strPanelID, strFpcID);						
+					//theApp.m_pTestLog->LOG_INFO(_T("**************** PanelID [%s] FpcID [%s] SendPlcCode size error ****************"), strPanelID, strFpcID);						
 					theApp.m_pTraceLog->LOG_INFO(_T("**************** PanelID [%s] FpcID [%s] SendPlcCode size error ****************"), strPanelID, strFpcID);
 				}
 					

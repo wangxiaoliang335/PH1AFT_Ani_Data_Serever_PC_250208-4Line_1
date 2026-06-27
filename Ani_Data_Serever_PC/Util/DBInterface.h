@@ -100,7 +100,7 @@ public:
 
     // Query all defects for specified panel
     BOOL QueryDefectsByParentGUID(const CString& strParentGUID, CDefectInfoList& defects);
-
+    BOOL QueryDefectsByParentGUID_Vision(const CString& strParentGUID, CDefectInfoList& defects);
     // Delete all defects for specified panel
     BOOL DeleteDefectsByParentGUID(const CString& strParentGUID);
 
