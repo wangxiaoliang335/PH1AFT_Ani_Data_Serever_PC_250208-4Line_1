@@ -441,7 +441,7 @@ void CPlcThread::ThreadRun()
 			if (m_bAlarmStart == !m_bStartFlag)
 			{
 				m_bAlarmStart = m_bStartFlag;
-				theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Alarm Start Flag [%s]"), m_bAlarmStart == FALSE ? _T("FALSE") : _T("TRUE")));
+				//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Alarm Start Flag [%s]"), m_bAlarmStart == FALSE ? _T("FALSE") : _T("TRUE")));
 				if (m_bAlarmStart == TRUE)
 				{
 					theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_AlarmEnd, OffSet_0, FALSE);
@@ -833,7 +833,7 @@ void CPlcThread::ThreadRun()
 				if (m_bJobDataStart[ii] == !m_bStartFlag)
 				{
 					m_bJobDataStart[ii] = m_bStartFlag;
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Job Data Start Flag [%s]"), m_bJobDataStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
+					//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("Job Data Start Flag [%s]"), m_bJobDataStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 					if (m_bJobDataStart[ii] == TRUE)
 					{
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_JobDataEnd1 + ii, OffSet_0, FALSE);
@@ -857,7 +857,7 @@ void CPlcThread::ThreadRun()
 				if (m_bJobDataStart[ii] == !m_bStartFlag)
 				{
 					m_bJobDataStart[ii] = m_bStartFlag;
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("ULD Job Data Start Flag [%s]"), m_bJobDataStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
+					//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("ULD Job Data Start Flag [%s]"), m_bJobDataStart[ii] == FALSE ? _T("FALSE") : _T("TRUE")));
 					if (m_bJobDataStart[ii] == TRUE)
 					{
 						theApp.m_pEqIf->m_pMNetH->SetPlcBitData(eBitType_UnloadJobDataEnd1 + ii, OffSet_0, FALSE);
@@ -1311,7 +1311,7 @@ void CPlcThread::TactThreadRun()
 				{
 					m_TactTimeStartFlag[ii] = m_TactTimeStart;
 
-					theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] Tact Time Flag [%d]"), theApp.m_vecTactName[ii].m_strTactTimeName, m_TactTimeStart));
+					//theApp.m_PlcThread->LogWrite(CStringSupport::FormatString(_T("[%s] Tact Time Flag [%d]"), theApp.m_vecTactName[ii].m_strTactTimeName, m_TactTimeStart));
 
 					TactTimeStartEndReset(ii, m_TactTimeStart);
 				}
@@ -1715,18 +1715,18 @@ void  CPlcThread::LogWrite(CString strContents, BOOL bAddListBox)
 	theApp.m_PlcLog->Info(strContents);
 
 	// 通过 PostMessage 发送到 UI 线程更新 ListBox（避免跨线程操作 MFC 控件）
-	if (bAddListBox)
-	{
-		CString* pStrLog = new CString(strContents);
-		if (g_MainLog && g_MainLog->m_hWnd)
-		{
-			g_MainLog->PostMessage(WM_PLC_LOG, 0, (LPARAM)pStrLog);
-		}
-		else
-		{
-			delete pStrLog;
-		}
-	}
+	//if (bAddListBox)
+	//{
+	//	CString* pStrLog = new CString(strContents);
+	//	if (g_MainLog && g_MainLog->m_hWnd)
+	//	{
+	//		g_MainLog->PostMessage(WM_PLC_LOG, 0, (LPARAM)pStrLog);
+	//	}
+	//	else
+	//	{
+	//		delete pStrLog;
+	//	}
+	//}
 }
 
 void CPlcThread::ProgramStartStopLog()
@@ -3189,15 +3189,18 @@ void CPlcThread::SumDFSDataStart(int iNum, int iOkNg, int iType)
 	if (pDfsDateValue.m_PanelID.IsEmpty())
 		pDfsDateValue.m_PanelID = pDfsDateValue.m_FpcID;
 
-	if (iOkNg == OKPanel)
-		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start OK"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	else
-		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start NG"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	if (iType == Machine_AOI)
-		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	else
-		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_ULD"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
-	theApp.m_pFTP->DfsAddTransferFile(pDfsDateValue);
+	//if (iOkNg == OKPanel)
+	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start OK"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	//else
+	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS Start NG"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	//if (iType == Machine_AOI)
+	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	//else
+	//	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP Start iType : Machine_ULD"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
+	if (!strUniqueID.IsEmpty())
+	{
+		theApp.m_pFTP->DfsAddTransferFile(pDfsDateValue);
+	}
 #if _SYSTEM_AMTAFT_
 	if(iType == Machine_AOI)
 		theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] SUM DFS FTP END iType : Machine_AOI"), pDfsDateValue.m_PanelID, pDfsDateValue.m_FpcID);
@@ -3554,11 +3557,11 @@ void CPlcThread::DefectCodeStart(int iNum)
 	if (strPanelID.IsEmpty())
 		strPanelID = strFpcID;
 	//220316 START
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode Start [%d]"), strPanelID, strFpcID, iNum);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode Start [%d]"), strPanelID, strFpcID, iNum);
 	//220316 End
 	CString strCodeGrade = theApp.SetTotalLoadResultCode(strPanelID, strFpcID, Machine_AOI);
 
-	theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] Start [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
+	//theApp.m_PlcLog->Info(_T("PanelID [%s] FpcID [%s] AOI DefectCode [%s] Start [%d]"), strPanelID, strFpcID, strCodeGrade, iNum);
 
 	if (strCodeGrade.IsEmpty() == FALSE)
 	{
@@ -3785,10 +3788,10 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 	strPanelID = PanelData.m_PanelID;
 	strFpcID = PanelData.m_FpcID;
 	int iCount = 0;
-	theApp.m_PlcLog->Info(_T("SendPlcDefectCode Start PanelID [%s] FpcID [%s]  iType : [%d]"), strPanelID, strFpcID, iType);
+	//theApp.m_PlcLog->Info(_T("SendPlcDefectCode Start PanelID [%s] FpcID [%s]  iType : [%d]"), strPanelID, strFpcID, iType);
 	if (iType == Machine_AOI)
 	{
-		theApp.m_PlcLog->Info(_T("strCodeGrade Start PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
+		//theApp.m_PlcLog->Info(_T("strCodeGrade Start PanelID [%s] FpcID [%s]  Machine_AOI"), strPanelID, strFpcID);
 		if (_ttoi(PanelData.m_PreGammaContactStatus) == m_dfsContactNG)
 			strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), theApp.m_strContactNgCode, theApp.m_strContactNgGrade);
 		else if (_ttoi(PanelData.m_TpResult) == m_dfsTpNG)
@@ -3829,7 +3832,7 @@ void CPlcThread::SendPlcDefectCode(int iNum, DfsDataValue PanelData, int iType)
 	}
 	else
 	{
-		theApp.m_PlcLog->Info(_T("strCodeGrade Start PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
+		//theApp.m_PlcLog->Info(_T("strCodeGrade Start PanelID [%s] FpcID [%s]  Machine_ULD"), strPanelID, strFpcID);
 		if (_ttoi(PanelData.m_PreGammaContactStatus) == m_dfsContactNG)
 			strCodeGrade = CStringSupport::FormatString(_T("%s^%s"), theApp.m_strContactNgCode, theApp.m_strContactNgGrade);
 		else if (_ttoi(PanelData.m_PreGammaContactStatus) == m_dfsPreGammaNG)
@@ -3940,15 +3943,15 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 	theApp.LoadPlcResultIndexCode(strCell_ID, strFpc_ID);
 	int iSendNGBuffer(Flow_AfterMachine);
 	//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] m_plcFlowResultDatas.size() : %d, panel id : %s, strFpc_ID:%s"), theApp.m_plcFlowResultDatas.size(), strCell_ID, strFpc_ID));
-	//for (auto& flowData : theApp.m_plcFlowResultDatas)
-	//{
-	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second));
-	//}
+	for (auto& flowData : theApp.m_plcFlowResultDatas)
+	{
+		LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [FlowResultDatas] Key(strGrade): [%s], Value(strCode): [%s]"), flowData.first, flowData.second));
+	}
 
-	//for (auto& gradeFlow : theApp.m_VecGradeFlow)
-	//{
-	//	LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [m_VecGradeFlow] (strGrade): [%s], (iFlow): [%d]"), gradeFlow.strGrade, gradeFlow.iFlow));
-	//}
+	for (auto& gradeFlow : theApp.m_VecGradeFlow)
+	{
+		LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] [m_VecGradeFlow] (strGrade): [%s], (iFlow): [%d]"), gradeFlow.strGrade, gradeFlow.iFlow));
+	}
 
 	if (theApp.m_plcFlowResultDatas.size() > 0)
 	{
@@ -3966,11 +3969,11 @@ void CPlcThread::AOIInspectDataParser(int iPanelNum, int iCommand)
 				//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] m_plcFlowResultDatas find panel id : %s"), strCell_ID));
 				if (theApp.m_strEqpId == "MFGAP" || theApp.m_strMachineType == "AFT")
 				{
-					//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, strCell_ID));
+					LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] eqpid %s machinetype %s panel id : %s"), theApp.m_strEqpId, theApp.m_strMachineType, strCell_ID));
 					if (Grades.iFlow == Flow_Operator)
 					{
 						iSendNGBuffer = Grades.iFlow;
-						//LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] iSendNGBuffer %d panel id : %s"), iSendNGBuffer, strCell_ID), 0);
+						LogWrite(CStringSupport::FormatString(_T("[AOIInspectDataParser] iSendNGBuffer %d panel id : %s"), iSendNGBuffer, strCell_ID), 0);
 					}
 				}
 				else
