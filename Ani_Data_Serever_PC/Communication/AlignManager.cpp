@@ -41,7 +41,7 @@ void CAlignManager::LogWrite(int iNum, CString strContents)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	g_MainLog->m_AlignListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+	//g_MainLog->m_AlignListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
 	theApp.m_AlignLog->LOG_INFO(strContents);
 }
 

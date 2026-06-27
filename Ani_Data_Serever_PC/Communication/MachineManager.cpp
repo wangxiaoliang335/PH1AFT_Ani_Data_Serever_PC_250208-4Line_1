@@ -52,7 +52,7 @@ void CMachineManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 	CStringArray responseTokens, responseTokens2;
 	strData.Replace(_T("\x3"), _T(""));
 	CStringSupport::GetTokenArray(strData, _T(','), responseTokens);
-	theApp.m_pTestLog->LOG_DEBUG(_T("(MES Test) MES -> PC, %s, "), strData);
+	//theApp.m_pTestLog->LOG_DEBUG(_T("(MES Test) MES -> PC, %s, "), strData);
 	int isize = responseTokens.GetSize();
 	if (responseTokens.GetSize() == 1)
 	{
@@ -82,7 +82,7 @@ void CMachineManager::OnDataReceived(const LPBYTE lpBuffer, DWORD dwCount)
 					{
 						MesPgCodes.m_PGCode[i] = responseTokens2[i];
 						theApp.m_bMesReturn = TRUE;
-						theApp.m_pTestLog->LOG_DEBUG(_T("(MES Test) MesPgCodes[%d] %s, "), i, MesPgCodes.m_PGCode[i]);
+						//theApp.m_pTestLog->LOG_DEBUG(_T("(MES Test) MesPgCodes[%d] %s, "), i, MesPgCodes.m_PGCode[i]);
 					}
 				}
 			}

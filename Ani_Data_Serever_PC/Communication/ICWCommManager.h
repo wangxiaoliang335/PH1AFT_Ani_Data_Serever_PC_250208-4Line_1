@@ -23,6 +23,9 @@ typedef std::function<ICW_VersionInfo()> ICW_GetVersionCallback;
 const int ICW_RECONNECT_INTERVAL_MS_DEFAULT = 10000;   // Reconnect interval 10 seconds
 const int ICW_MAX_RECONNECT_ATTEMPTS = 0;       // 0 = unlimited reconnect
 
+// OfflineState detection constants
+const DWORD OFFLINESTATE_TIMEOUT_MS = 12000;    // 12 seconds timeout for OfflineState recovery
+
 ///////////////////////////////////////////////////////////////////////////////
 // ICW Communication Manager Class
 ///////////////////////////////////////////////////////////////////////////////
@@ -120,6 +123,8 @@ public:
     static const UINT WM_ICW_DISCONNECTED = WM_USER + 101;
     static const UINT WM_ICW_START_INFO = WM_USER + 102;
     static const UINT WM_ICW_ERROR = WM_USER + 103;
+    //static const UINT WM_ICW_OFFLINE_STATE = WM_USER + 104;      // Socket连接但对方OfflineState
+    //static const UINT WM_ICW_ONLINE_RECOVERY = WM_USER + 105;    // OfflineState恢复（12秒内没有收到OfflineState）
 
 protected:
     // Override data received handling
@@ -180,6 +185,23 @@ private:
     DWORD m_dwDisconnectTime;              // 触发断开的时间戳
     static const DWORD DISCONNECT_DEBOUNCE_MS = 2000; // 2秒内恢复则忽略断开
     CRITICAL_SECTION m_csDebounce;         // 防抖操作锁
+
+    // ===== OfflineState Detection (对方Socket连接但发送OfflineState表示掉线) =====
+    BOOL m_bOfflineState;                  // 是否处于OfflineState状态
+    DWORD m_dwLastOfflineStateTime;        // 最后收到OfflineState消息的时间
+    HANDLE m_hOfflineStateQuitEvent;       // OfflineState监控线程退出事件
+    HANDLE m_hOfflineStateThread;          // OfflineState监控线程句柄
+    BOOL m_bOfflineStateThreadRunning;     // OfflineState监控线程是否在运行
+    CRITICAL_SECTION m_csOfflineState;     // OfflineState操作锁
+
+    // OfflineState detection thread function
+    static unsigned int WINAPI OfflineStateThreadProc(LPVOID lpParam);
+
+    // OfflineState detection functions
+    void OnOfflineStateReceived();
+    void StartOfflineStateMonitor();
+    void StopOfflineStateMonitor();
+
 };
 
 #endif // _ICW_COMM_MANAGER_H_

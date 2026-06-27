@@ -33,9 +33,17 @@ CICWCommManager::CICWCommManager()
     InitializeCriticalSection(&m_csSend);
     InitializeCriticalSection(&m_csReconnect);
     InitializeCriticalSection(&m_csDebounce);
+    InitializeCriticalSection(&m_csOfflineState);
     m_hReconnectQuitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    m_hOfflineStateQuitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     m_bPendingDisconnect = FALSE;
     m_dwDisconnectTime = 0;
+    m_bOfflineState = FALSE;
+    m_dwLastOfflineStateTime = 0;
+    m_hOfflineStateThread = NULL;
+    m_bOfflineStateThreadRunning = FALSE;
+
+    StartOfflineStateMonitor();
 
     // 从配置文件读取 ICW 重连间隔
     LoadConfig();
@@ -59,16 +67,24 @@ void CICWCommManager::LoadConfig()
 
 CICWCommManager::~CICWCommManager()
 {
+    StopOfflineStateMonitor(); // 先停止OfflineState监控
     StopAutoReconnect();  // 先停止自动重连
     Disconnect();         // 断开客户端连接
     StopServer();         // 再停止服务器
     DeleteCriticalSection(&m_csRecv);
     DeleteCriticalSection(&m_csSend);
     DeleteCriticalSection(&m_csReconnect);
+    DeleteCriticalSection(&m_csDebounce);
+    DeleteCriticalSection(&m_csOfflineState);
     if (m_hReconnectQuitEvent != NULL)
     {
         CloseHandle(m_hReconnectQuitEvent);
         m_hReconnectQuitEvent = NULL;
+    }
+    if (m_hOfflineStateQuitEvent != NULL)
+    {
+        CloseHandle(m_hOfflineStateQuitEvent);
+        m_hOfflineStateQuitEvent = NULL;
     }
 }
 
@@ -174,6 +190,11 @@ BOOL CICWCommManager::ConnectToServer(LPCTSTR strIP, LPCTSTR strPort)
     
     m_bConnected = TRUE;
     m_strRecvBuffer.Empty();
+
+    EnterCriticalSection(&m_csOfflineState);
+    m_bOfflineState = FALSE;
+    m_dwLastOfflineStateTime = 0;
+    LeaveCriticalSection(&m_csOfflineState);
     
     TRACE(_T("ICWCommManager: Connected to server %s:%s\n"), strIP, strPort);
     
@@ -191,7 +212,12 @@ BOOL CICWCommManager::ConnectToServer(LPCTSTR strIP, LPCTSTR strPort)
 ///////////////////////////////////////////////////////////////////////////////
 void CICWCommManager::Disconnect()
 {
-    if (!m_bConnected)
+    EnterCriticalSection(&m_csOfflineState);
+    m_bOfflineState = FALSE;
+    m_dwLastOfflineStateTime = 0;
+    LeaveCriticalSection(&m_csOfflineState);
+
+    if (!m_bConnected && !IsOpen())
         return;
     
     m_bConnected = FALSE;
@@ -352,11 +378,18 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
     {
     case EVT_CONSUCCESS:
         TRACE(_T("ICWCommManager: Client connected\n"));
-        // 重连成功，清除防抖标志
+        // 重连成功，清除防抖标志和OfflineState标志
         EnterCriticalSection(&m_csDebounce);
         m_bPendingDisconnect = FALSE;
         m_dwDisconnectTime = 0;
         LeaveCriticalSection(&m_csDebounce);
+        
+        EnterCriticalSection(&m_csOfflineState);
+        m_bOfflineState = FALSE;
+        m_dwLastOfflineStateTime = 0;
+        m_bConnected = TRUE;
+        LeaveCriticalSection(&m_csOfflineState);
+        
         if (m_hParentWnd)
         {
             ::PostMessage(m_hParentWnd, WM_ICW_CONNECTED, 0, 0);
@@ -365,6 +398,11 @@ void CICWCommManager::OnEvent(UINT uEvent, LPVOID lpvData)
         
     case EVT_CONDROP:
         TRACE(_T("ICWCommManager: Client disconnected\n"));
+
+        EnterCriticalSection(&m_csOfflineState);
+        m_bOfflineState = FALSE;
+        m_dwLastOfflineStateTime = 0;
+        LeaveCriticalSection(&m_csOfflineState);
         
         // TODO: 防抖机制暂时注释，待网络稳定后启用
         //if (m_bPendingDisconnect && 
@@ -419,6 +457,14 @@ void CICWCommManager::ProcessMessage(const CString& strMsg)
         return;
     
     TRACE(_T("ICWCommManager: Processing message: %s\n"), strTrimmed);
+    
+    // 检查是否包含OfflineState子字符串（对方Socket连接但实际掉线）
+    if (strTrimmed.Find(_T("OfflineState")) >= 0)
+    {
+        TRACE(_T("ICWCommManager: OfflineState detected in message\n"));
+        OnOfflineStateReceived();
+        // OfflineState消息仍然需要继续处理其他可能的命令（如Error$Alarm$IPU1 Disconnected）
+    }
     
     // 心跳消息
     if (CICWProtocol::IsHeartBeat(strTrimmed))
@@ -732,5 +778,180 @@ void CICWCommManager::StopAutoReconnect()
     m_nReconnectAttempts = 0;
 
     TRACE(_T("ICWCommManager: StopAutoReconnect - 完成\n"));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// OfflineState 检测处理
+///////////////////////////////////////////////////////////////////////////////
+void CICWCommManager::OnOfflineStateReceived()
+{
+    DWORD dwNow = GetTickCount();
+    BOOL bNotifyOfflineState = FALSE;
+
+    EnterCriticalSection(&m_csOfflineState);
+
+    BOOL bWasOfflineState = m_bOfflineState;
+    m_bOfflineState = TRUE;
+    m_dwLastOfflineStateTime = dwNow;
+    m_bConnected = FALSE;
+    bNotifyOfflineState = !bWasOfflineState;
+
+    LeaveCriticalSection(&m_csOfflineState);
+
+    // 如果之前不是OfflineState状态，现在变成OfflineState，通知父窗口
+    //if (bNotifyOfflineState)
+    //{
+    //    TRACE(_T("ICWCommManager: 进入OfflineState状态，m_bConnected=FALSE，通知父窗口\n"));
+
+    //    if (m_hParentWnd)
+    //    {
+    //        ::PostMessage(m_hParentWnd, WM_ICW_OFFLINE_STATE, 0, 0);
+    //    }
+    //}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 启动OfflineState监控线程
+///////////////////////////////////////////////////////////////////////////////
+void CICWCommManager::StartOfflineStateMonitor()
+{
+    EnterCriticalSection(&m_csOfflineState);
+    if (m_bOfflineStateThreadRunning)
+    {
+        LeaveCriticalSection(&m_csOfflineState);
+        return;
+    }
+
+    ResetEvent(m_hOfflineStateQuitEvent);
+    m_bOfflineStateThreadRunning = TRUE;
+    LeaveCriticalSection(&m_csOfflineState);
+    
+    // 启动监控线程
+    unsigned int nThreadID = 0;
+    m_hOfflineStateThread = (HANDLE)_beginthreadex(NULL, 0, &OfflineStateThreadProc, this, 0, &nThreadID);
+    
+    if (m_hOfflineStateThread == NULL)
+    {
+        EnterCriticalSection(&m_csOfflineState);
+        m_bOfflineStateThreadRunning = FALSE;
+        LeaveCriticalSection(&m_csOfflineState);
+        TRACE(_T("ICWCommManager: StartOfflineStateMonitor - _beginthreadex 失败\n"));
+        return;
+    }
+    
+    TRACE(_T("ICWCommManager: StartOfflineStateMonitor - 监控线程已启动\n"));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// 停止OfflineState监控线程
+///////////////////////////////////////////////////////////////////////////////
+void CICWCommManager::StopOfflineStateMonitor()
+{
+    HANDLE hThread = NULL;
+
+    EnterCriticalSection(&m_csOfflineState);
+    if (!m_bOfflineStateThreadRunning && m_hOfflineStateThread == NULL)
+    {
+        LeaveCriticalSection(&m_csOfflineState);
+        return;
+    }
+
+    TRACE(_T("ICWCommManager: StopOfflineStateMonitor - 停止监控线程\n"));
+    SetEvent(m_hOfflineStateQuitEvent);
+    hThread = m_hOfflineStateThread;
+    LeaveCriticalSection(&m_csOfflineState);
+    
+    if (hThread != NULL && GetCurrentThreadId() != GetThreadId(hThread))
+    {
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);
+
+        EnterCriticalSection(&m_csOfflineState);
+        if (m_hOfflineStateThread == hThread)
+        {
+            m_hOfflineStateThread = NULL;
+        }
+        m_bOfflineStateThreadRunning = FALSE;
+        LeaveCriticalSection(&m_csOfflineState);
+    }
+    else
+    {
+        EnterCriticalSection(&m_csOfflineState);
+        m_bOfflineStateThreadRunning = FALSE;
+        LeaveCriticalSection(&m_csOfflineState);
+    }
+    
+    TRACE(_T("ICWCommManager: StopOfflineStateMonitor - 完成\n"));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// OfflineState监控线程函数
+///////////////////////////////////////////////////////////////////////////////
+unsigned int WINAPI CICWCommManager::OfflineStateThreadProc(LPVOID lpParam)
+{
+    CICWCommManager* pThis = static_cast<CICWCommManager*>(lpParam);
+    if (!pThis)
+        return 0;
+    
+    TRACE(_T("ICWCommManager: OfflineState监控线程启动\n"));
+    
+    while (TRUE)
+    {
+        // 每秒检查一次是否超时
+        DWORD dwWait = WaitForSingleObject(pThis->m_hOfflineStateQuitEvent, 1000);
+        if (dwWait == WAIT_OBJECT_0)
+        {
+            TRACE(_T("ICWCommManager: OfflineState监控线程收到退出信号\n"));
+            break;
+        }
+        
+        if (!pThis->IsOpen())
+        {
+            continue;
+        }
+        
+        DWORD dwNow = GetTickCount();
+        
+        EnterCriticalSection(&pThis->m_csOfflineState);
+        DWORD dwLastTime = pThis->m_dwLastOfflineStateTime;
+        BOOL bIsOfflineState = pThis->m_bOfflineState;
+        LeaveCriticalSection(&pThis->m_csOfflineState);
+        
+        if (bIsOfflineState && dwLastTime > 0)
+        {
+            DWORD dwElapsed = dwNow - dwLastTime;
+            
+            if (dwElapsed >= OFFLINESTATE_TIMEOUT_MS)
+            {
+                BOOL bNotifyRecovery = FALSE;
+                TRACE(_T("ICWCommManager: 12秒内没有收到OfflineState消息，且6501端口未断开，认为对方已恢复连接\n"));
+                
+                EnterCriticalSection(&pThis->m_csOfflineState);
+                if (pThis->m_bOfflineState)
+                {
+                    pThis->m_bOfflineState = FALSE;
+                    pThis->m_dwLastOfflineStateTime = 0;
+                    pThis->m_bConnected = TRUE;
+                    bNotifyRecovery = TRUE;
+                }
+                LeaveCriticalSection(&pThis->m_csOfflineState);
+                
+                //if (bNotifyRecovery && pThis->m_hParentWnd)
+                //{
+                //    ::PostMessage(pThis->m_hParentWnd, WM_ICW_ONLINE_RECOVERY, 0, 0);
+                //}
+
+                continue;
+            }
+        }
+    }
+
+    EnterCriticalSection(&pThis->m_csOfflineState);
+    pThis->m_bOfflineStateThreadRunning = FALSE;
+    pThis->m_hOfflineStateThread = NULL;
+    LeaveCriticalSection(&pThis->m_csOfflineState);
+    
+    TRACE(_T("ICWCommManager: OfflineState监控线程退出\n"));
+    return 0;
 }
 

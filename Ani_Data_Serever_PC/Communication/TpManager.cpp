@@ -55,7 +55,7 @@ void CTpManager::TpLogMessage(CString strContents)
 
 	m_csTpData.Lock();
 
-	g_MainLog->m_TouchListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+	//g_MainLog->m_TouchListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
 	theApp.m_pTpLog->LOG_INFO(strContents);
 
 	m_csTpData.Unlock();

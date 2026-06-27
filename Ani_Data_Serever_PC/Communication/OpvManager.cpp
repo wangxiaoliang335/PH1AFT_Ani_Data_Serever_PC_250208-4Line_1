@@ -57,7 +57,7 @@ void COpvManager::OpvLogMessage(CString strContents)
 	if (theApp.m_bExitFlag == FALSE)
 		return;
 
-	g_MainLog->m_TouchListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
+	//g_MainLog->m_TouchListBox.InsertString(0, CStringSupport::FormatString(_T("[%s] %s"), GetNowSystemTimeMilliseconds(), strContents));
 	theApp.m_pOpvLog->LOG_INFO(strContents);
 }
 

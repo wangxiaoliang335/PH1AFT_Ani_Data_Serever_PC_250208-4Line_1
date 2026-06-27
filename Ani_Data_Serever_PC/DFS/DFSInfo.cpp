@@ -50,7 +50,7 @@ BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, 
 			strVisionPath = DFS_SHARE_PATH + GetDateString2ChangeDay((-1) * i) + _T("\\") + strPanelID + _T("\\AOI\\") + strPanelID + _T(".csv");
 			if (!AoiDfsData.LoadPanelDFSInfo(strVisionPath, AOIdfs))
 			{
-				theApp.m_pTestLog->LOG_DEBUG(_T("reTry : %s,"), strVisionPath);
+				//theApp.m_pTestLog->LOG_DEBUG(_T("reTry : %s,"), strVisionPath);
 				theApp.m_pFTPLog->Info(_T("Vision File Path Error : %s,"), strVisionPath);
 				if (i == 6/*요거도 파라미터 추가 시 파라미터 -1*/)
 					m_PanelSummaryInfo.AOI_PAENL_GRADE = _T("NG"); //Data에서 찾아서 있으면, NG로.. 20210114
@@ -64,7 +64,7 @@ BOOL CDFSInfo::AMTAFTSavePanelDFS_SUM(DfsDataValue DfsInfo, CString strPanelID, 
 			if (iCount > 10)
 			{
 				theApp.m_pTraceLog->LOG_DEBUG(_T("MapFile Path Error : %s,"), strVisionPath);
-				theApp.m_pTestLog->LOG_DEBUG(_T("MapFile Path Error : %s,"), strVisionPath);
+				//theApp.m_pTestLog->LOG_DEBUG(_T("MapFile Path Error : %s,"), strVisionPath);
 				break;
 			}
 		}
@@ -506,26 +506,26 @@ BOOL CDFSInfo::DFSDefectBeginLoad(CString strFileName, CString strTypeName, BOOL
 						if (iter != m_mapPanelDefect.end())
 						{
 							iter->second.insert(make_pair(strCode, strGrade));
-							theApp.m_pTestLog->Info(_T("iter->second.insert file path : %s,%s,%s "), strFileName, strCode, strGrade);
+							//theApp.m_pTestLog->Info(_T("iter->second.insert file path : %s,%s,%s "), strFileName, strCode, strGrade);
 						}							
 						else
 						{
 							mapCode.insert(make_pair(strCode, strGrade));
 							m_mapPanelDefect.insert(make_pair(strTypeName, mapCode));
-							theApp.m_pTestLog->Info(_T("m_mapPanelDefect file path : %s,%s,%s "), strFileName, strCode, strGrade);
+							//theApp.m_pTestLog->Info(_T("m_mapPanelDefect file path : %s,%s,%s "), strFileName, strCode, strGrade);
 						}
-						theApp.m_pTestLog->Info(_T("file path : %s RankDfsLoad Type : %s, Code : %s, Grade : %s"), strFileName, strTypeName, strCode, strGrade);
+						//theApp.m_pTestLog->Info(_T("file path : %s RankDfsLoad Type : %s, Code : %s, Grade : %s"), strFileName, strTypeName, strCode, strGrade);
 						Codeiter = m_mapDefectCodeList.find(strCode);
 						if (Codeiter != m_mapDefectCodeList.end())
 						{
 							Codeiter->second++;
-							theApp.m_pTestLog->Info(_T("Codeiter->second file path : %s "), strFileName);
+							//theApp.m_pTestLog->Info(_T("Codeiter->second file path : %s "), strFileName);
 						}
 							
 						else
 						{
 							m_mapDefectCodeList.insert(make_pair(strCode, 1));
-							theApp.m_pTestLog->Info(_T("m_mapDefectCodeList file path : %s "), strFileName);
+							//theApp.m_pTestLog->Info(_T("m_mapDefectCodeList file path : %s "), strFileName);
 						}
 							
 					}
@@ -867,7 +867,7 @@ void CDFSInfo::SetEQPDataInfo(CString strRECIPE_NO, CString strAOI_RECIPE_NAME, 
 
 BOOL CDFSInfo::LoadPanelDFSInfo(CString strFilename, int iInspNum)
 {
-	Delay(500, TRUE);
+	Delay(220, TRUE);
 	CString strInfo, strInspName;
 	CStdioFile sFile;
 	BOOL bFlag = TRUE;
@@ -1923,6 +1923,7 @@ CString CDFSInfo::GetPanelDatatBegin()
 	strTemp += m_GammaDfsInfo.m_strVCI + _T(",");
 	strTemp += m_GammaDfsInfo.m_strProgramVersion;
 #endif
+	strTemp.Replace(_T("』"), _T(""));
 	return strTemp;
 }
 
@@ -2167,16 +2168,16 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 	CString strPanelID = inspResult.UniqueID.IsEmpty() ? inspResult.ScreenID : inspResult.UniqueID;
 	CString strDate = GetDateString2();
 
-	TRACE(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ====\n"));
-	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ===="));
-	theApp.m_pTestLog->Info(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]"),
-		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
-	theApp.m_pTestLog->Info(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]"),
-		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
-	TRACE(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]\n"),
-		(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
-	TRACE(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]\n"),
-		(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+	//TRACE(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ====\n"));
+	//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== 开始写入AOI CSV ===="));
+	//theApp.m_pTestLog->Info(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]"),
+	//	(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	//theApp.m_pTestLog->Info(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]"),
+	//	(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
+	//TRACE(_T("  inspResult.UniqueID=[%s], inspResult.ScreenID=[%s], inspResult.GUID=[%s]\n"),
+	//	(LPCTSTR)inspResult.UniqueID, (LPCTSTR)inspResult.ScreenID, (LPCTSTR)inspResult.GUID);
+	//TRACE(_T("  defectList.size()=%d, nFixtureNo=%d, strFpcID=[%s]\n"),
+	//	(int)defectList.size(), nFixtureNo, (LPCTSTR)(strFpcID ? strFpcID : _T("NULL")));
 
 	// 优先使用传入的 FpcID 作为目录/文件名（与 RankThread 读取路径保持一致）
 	CString strCsvPanelID;
@@ -2188,8 +2189,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 	// 构造 AOI csv 文件路径（与 RankThread/RankSave 保持一致）
 	CString strAOIPath = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\") + strCsvPanelID + _T(".csv");
 
-	TRACE(_T("  strCsvPanelID=[%s], strAOIPath=[%s]\n"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
-	theApp.m_pTestLog->Info(_T("  strCsvPanelID=[%s], strAOIPath=[%s]"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+	//TRACE(_T("  strCsvPanelID=[%s], strAOIPath=[%s]\n"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
+	//theApp.m_pTestLog->Info(_T("  strCsvPanelID=[%s], strAOIPath=[%s]"), (LPCTSTR)strCsvPanelID, (LPCTSTR)strAOIPath);
 
 	// 创建目录结构
 	CString strAoiDir = DFS_SHARE_PATH + strDate + _T("\\") + strCsvPanelID + _T("\\AOI\\");
@@ -2198,14 +2199,14 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 	// 打开文件（覆盖写入）
 	if (sFile.Open(strAOIPath, CFile::modeCreate | CFile::modeWrite) == FALSE)
 	{
-		theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] Failed to create file: %s"), strAOIPath);
-		TRACE(_T("[WriteAOICSVFile] 文件打开失败: %s\n"), (LPCTSTR)strAOIPath);
-		theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开失败: %s"), (LPCTSTR)strAOIPath);
+		//theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] Failed to create file: %s"), strAOIPath);
+		//TRACE(_T("[WriteAOICSVFile] 文件打开失败: %s\n"), (LPCTSTR)strAOIPath);
+		//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开失败: %s"), (LPCTSTR)strAOIPath);
 		return FALSE;
 	}
 
-	TRACE(_T("[WriteAOICSVFile] 文件打开成功: %s\n"), (LPCTSTR)strAOIPath);
-	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开成功: %s"), (LPCTSTR)strAOIPath);
+	//TRACE(_T("[WriteAOICSVFile] 文件打开成功: %s\n"), (LPCTSTR)strAOIPath);
+	//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 文件打开成功: %s"), (LPCTSTR)strAOIPath);
 
 	// ================================================================
 	// 填充 m_DefectDataList（缺陷列表）
@@ -2214,16 +2215,16 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 	CString strAOIGrade = inspResult.AOIResult.CompareNoCase(_T("OK")) == 0 ? _T("OK") : inspResult.Grade_AOI;
 	m_DefectDataList.clear();
 
-	TRACE(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d\n"), (int)defectList.size());
-	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d"), (int)defectList.size());
+	//TRACE(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d\n"), (int)defectList.size());
+	//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 开始遍历缺陷列表, defectList.size()=%d"), (int)defectList.size());
 	for (int i = 0; i < (int)defectList.size(); i++)
 	{
 		const CDefectInfo& defect = defectList[i];
 
-		TRACE(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f\n"),
-			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
-		theApp.m_pTestLog->Info(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
-			i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+		//TRACE(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f\n"),
+		//	i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
+		//theApp.m_pTestLog->Info(_T("  [Defect %d] Type=[%s], Pos_x=%d, Pos_y=%d, Pos_w=%d, Pos_h=%d, TrueSize=%.2f"),
+		//	i, (LPCTSTR)defect.Type, defect.Pos_x, defect.Pos_y, defect.Pos_width, defect.Pos_height, defect.TrueSize);
 
 		SDFSDefectDataBegin item;
 		item.strPANEL_ID = strCsvPanelID;
@@ -2263,12 +2264,12 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 		item.strY = defect.Pos_y > 0 ? Int2String(defect.Pos_y) : _T("");
 		item.strSIZE = defect.TrueSize > 0 ? Int2String((int)defect.TrueSize) : _T("");
 
-		TRACE(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]\n"),
-			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
-			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
-		theApp.m_pTestLog->Info(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
-			i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
-			(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+		//TRACE(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]\n"),
+		//	i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+		//	(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
+		//theApp.m_pTestLog->Info(_T("  [Defect %d] CSV字段: X=[%s], Y=[%s], SIZE=[%s], CODE=[%s], GRADE=[%s]"),
+		//	i, (LPCTSTR)item.strX, (LPCTSTR)item.strY, (LPCTSTR)item.strSIZE,
+		//	(LPCTSTR)item.strDEFECT_CODE, (LPCTSTR)item.strDEFECT_GRADE);
 
 		// CAM_INSPECT=2（与旧 Vision PC 一致）
 		item.strCAM_INSPECT = _T("2");
@@ -2281,8 +2282,8 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 		m_DefectDataList.push_back(item);
 	}
 
-	TRACE(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d\n"), (int)m_DefectDataList.size());
-	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d"), (int)m_DefectDataList.size());
+	//TRACE(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d\n"), (int)m_DefectDataList.size());
+	//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] 缺陷列表填充完成, m_DefectDataList.size()=%d"), (int)m_DefectDataList.size());
 
 	// ================================================================
 	// 补充汇总缺陷记录
@@ -2378,19 +2379,21 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				// X 方向：像素坐标 → 玻璃物理坐标
 				double fScaleX = (inspResult.GridImageXLen > 0)
 					? (inspResult.PanelPhysicalXLen / (double)inspResult.GridImageXLen) : 1.0;
-				fX = (double)defectList[ii].Pos_x * fScaleX;
+				//fX = (double)defectList[ii].Pos_x * fScaleX;
+				fX = ((double)inspResult.GridImageXLen - (double)defectList[ii].Pos_x) * fScaleX;   //中心坐标从左上角换成右上角了
 
 				// Y 方向：像素坐标 → 玻璃物理坐标
 				double fScaleY = (inspResult.GridImageYLen > 0)
 					? (inspResult.PanelPhysicalYLen / (double)inspResult.GridImageYLen) : 1.0;
-				fY = (double)defectList[ii].Pos_y * fScaleY;
+				//fY = (double)defectList[ii].Pos_y * fScaleY;
+				fY = (double)defectList[ii].Pos_y * fScaleY;   //中心坐标从左上角换成右上角了
 
 				fSize = defectList[ii].TrueSize > 0 ? defectList[ii].TrueSize
 					: max((double)defectList[ii].Pos_width, (double)defectList[ii].Pos_height);
 			}
 
 			CString strDefectLine;
-			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,2,%s\n"),
+			strDefectLine.Format(_T("%s,%d,%s,%s,%s,%s,%s,%.2f,%.2f,%.6f,2,%s\n"),
 				(LPCTSTR)item.strPANEL_ID,
 				ii + 1,
 				(LPCTSTR)item.strDEFECT_TYPE,
@@ -2398,7 +2401,7 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 				(LPCTSTR)item.strDEFECT_CODE,
 				(LPCTSTR)item.strDEFECT_GRADE,
 				(LPCTSTR)item.strIMAGE_DATA,
-				fX, fY, fSize,
+				fY * 1000, fX * 1000, fSize,
 				(LPCTSTR)item.strZone);
 			sFile.WriteString(strDefectLine);
 		}
@@ -2483,11 +2486,11 @@ BOOL CDFSInfo::WriteAOICSVFile(const CInspectionResult& inspResult, const CDefec
 
 	sFile.Close();
 
-	theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] AOI CSV written: %s (DefectCount=%d)"),
-		strAOIPath, (int)defectList.size());
-	theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ===="));
-	theApp.m_pTestLog->Info(_T("  文件路径: %s, 缺陷数量: %d"), (LPCTSTR)strAOIPath, (int)defectList.size());
-	TRACE(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ====\n  文件路径: %s\n  缺陷数量: %d\n"), (LPCTSTR)strAOIPath, (int)defectList.size());
+	//theApp.m_pFTPLog->Info(_T("[WriteAOICSVFile] AOI CSV written: %s (DefectCount=%d)"),
+	//	strAOIPath, (int)defectList.size());
+	//theApp.m_pTestLog->Info(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ===="));
+	//theApp.m_pTestLog->Info(_T("  文件路径: %s, 缺陷数量: %d"), (LPCTSTR)strAOIPath, (int)defectList.size());
+	//TRACE(_T("[WriteAOICSVFile] ==== AOI CSV 写入完成 ====\n  文件路径: %s\n  缺陷数量: %d\n"), (LPCTSTR)strAOIPath, (int)defectList.size());
 
 	return TRUE;
 }
@@ -2515,7 +2518,7 @@ BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& 
 {
 	if (strPanelID == NULL || _tcslen(strPanelID) == 0)
 	{
-		theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] PanelID 为空，跳过写入"));
+		//theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] PanelID 为空，跳过写入"));
 		return FALSE;
 	}
 
@@ -2530,7 +2533,7 @@ BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& 
 	{
 		if (!CreateDirectory(strDirPath, NULL))
 		{
-			theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] 创建目录失败: %s"), (LPCTSTR)strDirPath);
+			//theApp.m_pTestLog->Error(_T("[WriteOpvDefectCodeINI] 创建目录失败: %s"), (LPCTSTR)strDirPath);
 			return FALSE;
 		}
 	}
@@ -2538,9 +2541,9 @@ BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& 
 	CString strFilePath;
 	strFilePath.Format(_T("%s\\%s.ini"), (LPCTSTR)strDirPath, strPanelID);
 
-	TRACE(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s\n"), (LPCTSTR)strFilePath);
-	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s, 缺陷数量: %d"),
-		(LPCTSTR)strFilePath, (int)defectList.size());
+	//TRACE(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s\n"), (LPCTSTR)strFilePath);
+	//theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 开始写入 INI: %s, 缺陷数量: %d"),
+	//	(LPCTSTR)strFilePath, (int)defectList.size());
 
 	// 使用 EZIni 写入
 	EZIni ini(strFilePath);
@@ -2661,26 +2664,26 @@ BOOL CDFSInfo::WriteOpvDefectCodeINI(LPCTSTR strPanelID, const CDefectInfoList& 
 			strKeyName.Format(_T("Under,%s,%s"), (LPCTSTR)strCode, (LPCTSTR)strGrade);
 			ini[strSection][strKeyName] = nCount;
 
-			TRACE(_T("[WriteOpvDefectCodeINI] [%s] %s=%d\n"),
-				(LPCTSTR)strSection, (LPCTSTR)strKeyName, nCount);
+			//TRACE(_T("[WriteOpvDefectCodeINI] [%s] %s=%d\n"),
+			//	(LPCTSTR)strSection, (LPCTSTR)strKeyName, nCount);
 		}
 
 		// 写入 UnderKill 总数
 		ini[strSection][_T("UnderKill")] = nTotalUnder;
 
-		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] Section [%s] UnderKill=%d"),
-			(LPCTSTR)strSection, nTotalUnder);
+		//theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] Section [%s] UnderKill=%d"),
+		//	(LPCTSTR)strSection, nTotalUnder);
 	}
 
 	// 如果没有缺陷，写入 OK 标记（老机器格式）
 	if (defectList.empty())
 	{
 		ini[_T("OK")][_T("Result")] = _T("1");
-		theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 无缺陷，写入 OK=1"));
+		//theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] 无缺陷，写入 OK=1"));
 	}
 
-	theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s"), (LPCTSTR)strFilePath);
-	TRACE(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s\n"), (LPCTSTR)strFilePath);
+	//theApp.m_pTestLog->Info(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s"), (LPCTSTR)strFilePath);
+	//TRACE(_T("[WriteOpvDefectCodeINI] INI 写入完成: %s\n"), (LPCTSTR)strFilePath);
 
 	return TRUE;
 }
